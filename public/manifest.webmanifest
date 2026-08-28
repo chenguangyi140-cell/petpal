@@ -1,0 +1,16 @@
+{
+  "name": "PetPal 宠物陪伴",
+  "short_name": "PetPal",
+  "description": "用自家宠物照片打造的专属陪伴伙伴：聊天、情绪、换装、化妆。",
+  "lang": "zh-CN",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#FFF1F6",
+  "theme_color": "#F472B6",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/maskable.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}

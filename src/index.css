@@ -1,0 +1,130 @@
+@import 'tailwindcss';
+
+@theme {
+  /* 品牌色：Pet Tech 调色板（暖色 + 活力） */
+  --color-primary: #3b82f6;
+  --color-primary-light: #60a5fa;
+  --color-primary-soft: #dbeafe;
+  --color-cta: #f97316;
+  --color-cta-light: #fb923c;
+
+  /* 中性色 */
+  --color-surface: #ffffff;
+  --color-canvas: #f8fafc;
+  --color-ink: #1e293b;
+  --color-ink-muted: #64748b;
+  --color-line: #e2e8f0;
+
+  /* 语义色 */
+  --color-candy: #f472b6;
+  --color-candy-soft: #fce7f3;
+  --color-sunny: #fbbf24;
+  --color-sunny-soft: #fef3c7;
+  --color-mint: #34d399;
+  --color-mint-soft: #d1fae5;
+  --color-grape: #a78bfa;
+  --color-grape-soft: #ede9fe;
+
+  /* 字体族 */
+  --font-heading: 'Fredoka', 'Nunito', system-ui, sans-serif;
+  --font-body: 'Nunito', system-ui, -apple-system, 'Microsoft YaHei', sans-serif;
+
+  /* 圆角：Claymorphism 需要饱满的圆角 */
+  --radius-clay: 20px;
+  --radius-clay-sm: 14px;
+
+  /* 阴影：内外双层模拟陶土质感 */
+  --shadow-clay:
+    8px 8px 16px rgba(30, 41, 59, 0.08), -4px -4px 12px rgba(255, 255, 255, 0.9);
+  --shadow-clay-sm:
+    4px 4px 10px rgba(30, 41, 59, 0.07), -2px -2px 6px rgba(255, 255, 255, 0.9);
+  --shadow-clay-inset:
+    inset 4px 4px 8px rgba(30, 41, 59, 0.06), inset -3px -3px 6px rgba(255, 255, 255, 0.8);
+}
+
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    font-family: var(--font-body);
+    background: var(--color-canvas);
+    color: var(--color-ink);
+    /* 移动端禁止横向滚动，避免布局溢出导致页面抖动 */
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-heading);
+  }
+
+  /* 统一焦点样式，满足键盘可达性 */
+  :focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+
+  /* 自定义滚动条，避免默认样式破坏整体视觉 */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-line);
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+@layer components {
+  /* 陶土质感卡片 */
+  .clay-card {
+    background: var(--color-surface);
+    border-radius: var(--radius-clay);
+    box-shadow: var(--shadow-clay);
+  }
+
+  .clay-card-sm {
+    background: var(--color-surface);
+    border-radius: var(--radius-clay-sm);
+    box-shadow: var(--shadow-clay-sm);
+  }
+
+  /* 按压反馈：软性下陷而非位移，避免布局跳动 */
+  .clay-press {
+    transition:
+      transform 150ms ease-out,
+      box-shadow 150ms ease-out;
+  }
+  .clay-press:active {
+    transform: scale(0.96);
+    box-shadow: var(--shadow-clay-inset);
+  }
+
+  /* 隐藏滚动条但保留滚动能力（横向分类选择器） */
+  .no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* 尊重系统「减少动态效果」偏好：全局降级动画 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

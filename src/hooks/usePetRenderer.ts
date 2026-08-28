@@ -1,0 +1,96 @@
+import { useEffect, useMemo, useRef } from 'react'
+import { PetRenderer } from '@/engine/renderer'
+import { usePetStore, selectEquippedItems } from '@/store/petStore'
+import { useSettingsStore } from '@/store/settingsStore'
+
+/**
+ * 管理 PetRenderer 生命周期并与 store 状态同步
+ *
+ * 设计要点：渲染器实例不参与 React 渲染，仅通过命令式 setState 更新——
+ * 若把每帧动画状态放进 React state，会导致 60fps 重渲染整个组件树。
+ */
+export function usePetRenderer(canvasRef: React.RefObject<HTMLCanvasElement | null>) {
+  const rendererRef = useRef<PetRenderer | null>(null)
+  /** 点击画布时的回调（归一化坐标） */
+  const onTapRef = useRef<((x: number, y: number) => void) | null>(null)
+
+  const emotion = usePetStore((s) => s.emotion)
+  const action = usePetStore((s) => s.action)
+  const makeup = usePetStore((s) => s.makeup)
+  const cutout = usePetStore((s) => s.profile?.cutoutDataUrl ?? null)
+  const anchors = usePetStore((s) => s.profile?.anchors ?? null)
+  const equipped = usePetStore(selectEquippedItems)
+  const reduceMotion = useSettingsStore((s) => s.shouldReduceMotion())
+
+  // 初始化渲染器与尺寸监听
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    const renderer = new PetRenderer(canvas)
+    rendererRef.current = renderer
+
+    const parent = canvas.parentElement
+    if (!parent) return
+
+    // 响应式尺寸：跟随容器而非固定值，保证多端自适应
+    const ro = new ResizeObserver(() => {
+      const rect = parent.getBoundingClientRect()
+      const size = Math.max(200, Math.min(rect.width, rect.height || rect.width))
+      renderer.resize(size, size)
+    })
+    ro.observe(parent)
+
+    const rect = parent.getBoundingClientRect()
+    const size = Math.max(200, Math.min(rect.width, rect.height || rect.width))
+    renderer.resize(size, size)
+    renderer.start()
+
+    // 点击宠物：转换归一化坐标并触发特效与互动
+    const handleClick = (e: MouseEvent) => {
+      const r = canvas.getBoundingClientRect()
+      const x = (e.clientX - r.left) / r.width
+      const y = (e.clientY - r.top) / r.height
+      renderer.burst(x, y, 6)
+      onTapRef.current?.(x, y)
+    }
+    canvas.addEventListener('click', handleClick)
+
+    return () => {
+      canvas.removeEventListener('click', handleClick)
+      ro.disconnect()
+      renderer.destroy()
+      rendererRef.current = null
+    }
+  }, [canvasRef])
+
+  // 照片资源同步
+  useEffect(() => {
+    void rendererRef.current?.setCutout(cutout)
+  }, [cutout])
+
+  // 锚点同步
+  useEffect(() => {
+    rendererRef.current?.setAnchors(anchors)
+  }, [anchors])
+
+  // 情绪 / 动作 / 服装 / 妆容同步
+  useEffect(() => {
+    rendererRef.current?.setState({ emotion, action, wearables: equipped, makeup, reduceMotion })
+  }, [emotion, action, equipped, makeup, reduceMotion])
+
+  return useMemo(
+    () => ({
+      /** 播放一次性动作（如跳跃），不修改 store 的持久状态 */
+      playAction: (a: Parameters<PetRenderer['playAction']>[0]) =>
+        rendererRef.current?.playAction(a),
+      burst: (x: number, y: number, n?: number) => rendererRef.current?.burst(x, y, n),
+      exportImage: () => rendererRef.current?.exportImage() ?? '',
+      /** 注册点击回调 */
+      setTapHandler: (fn: (x: number, y: number) => void) => {
+        onTapRef.current = fn
+      },
+    }),
+    [],
+  )
+}
