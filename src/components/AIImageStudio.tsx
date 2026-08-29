@@ -3,12 +3,14 @@ import {
   ArrowLeft,
   ArrowRight,
   Box,
+  Cloud,
   ImagePlus,
   Layers,
   Loader2,
   Sparkles,
   Upload,
   X,
+  Zap,
 } from 'lucide-react'
 import type { SkinId, ThreeViewSet } from '@/types'
 import { usePetStore } from '@/store/petStore'
@@ -19,13 +21,18 @@ import {
   generateThreeViews,
   pingBridge,
 } from '@/services/aiService'
+import {
+  dataURLToBlob,
+  generateViaForge,
+  getHunyuan3DInfo,
+} from '@/services/cloudService'
 import { ThreeViewRenderer } from '@/engine/threeViewRenderer'
 import { ModelViewer } from '@/three/modelViewer'
 import { SKIN_IDS, getSkin } from '@/skins/registry'
 
 type StudioMode = 'create' | 'edit'
 type Step = 'source' | 'method' | 'preview'
-type Method = 'ai' | 'manual'
+type Method = 'ai' | 'cloud' | 'manual'
 type AiOutput = 'threeView' | 'model3d'
 
 interface StudioProps {
@@ -50,6 +57,7 @@ export function AIImageStudio({ mode, onClose }: StudioProps) {
   const [generating, setGenerating] = useState(false)
   const [aiOnline, setAiOnline] = useState<boolean | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [hunyuanInfo, setHunyuanInfo] = useState<{ webUrl: string; steps: string[]; fallbackNote: string } | null>(null)
 
   // 手动模式资产
   const [manFront, setManFront] = useState<string | null>(null)
@@ -96,6 +104,37 @@ export function AIImageStudio({ mode, onClose }: StudioProps) {
       setGenerating(false)
     }
   }, [photo, aiOutput, type])
+
+  // 云端生成：Forge（自动）
+  const onRunCloudForge = useCallback(async () => {
+    if (!photo) return
+    setGenerating(true)
+    setError(null)
+    try {
+      const result = await generateViaForge(
+        photo,
+        type === 'pet'
+          ? 'a cute cartoon pet character, full body, T-pose, white background, stylized 3D render'
+          : 'a cute cartoon human character, full body, T-pose, white background, stylized 3D render',
+      )
+      const blob = dataURLToBlob(result.glbDataUrl)
+      setResultGlb(blob)
+      setResultViews(null)
+      setStep('preview')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '云端生成失败，请重试。')
+    } finally {
+      setGenerating(false)
+    }
+  }, [photo, type])
+
+  // 云端生成：Hunyuan3D（跳转网页版手动操作）
+  const onRunCloudHunyuan = useCallback(() => {
+    setHunyuanInfo(getHunyuan3DInfo())
+    setError(null)
+    setGenerating(false)
+    // 不跳转步骤，直接展示引导卡片
+  }, [])
 
   const useManual = useCallback(() => {
     setError(null)
@@ -169,6 +208,9 @@ export function AIImageStudio({ mode, onClose }: StudioProps) {
               error={error}
               photo={photo}
               onRunAi={runAi}
+              onRunCloudForge={onRunCloudForge}
+              onRunCloudHunyuan={onRunCloudHunyuan}
+              hunyuanInfo={hunyuanInfo}
               // 手动资产
               manFront={manFront}
               setManFront={setManFront}
@@ -304,7 +346,10 @@ function MethodStep({
   generating,
   error,
   photo,
+  hunyuanInfo,
   onRunAi,
+  onRunCloudForge,
+  onRunCloudHunyuan,
   manFront,
   setManFront,
   manSide,
@@ -323,7 +368,10 @@ function MethodStep({
   generating: boolean
   error: string | null
   photo: string | null
+  hunyuanInfo: { webUrl: string; steps: string[]; fallbackNote: string } | null
   onRunAi: () => void
+  onRunCloudForge: () => void
+  onRunCloudHunyuan: () => void
   manFront: string | null
   setManFront: (v: string | null) => void
   manSide: string | null
@@ -337,7 +385,9 @@ function MethodStep({
   return (
     <div className="flex flex-col">
       <h3 className="font-heading text-xl text-primary">选择生成方式</h3>
-      <p className="mt-1 text-sm text-ink-muted">自动模式需本机运行 ComfyUI + 桥接；手动模式零依赖、立即可用。</p>
+      <p className="mt-1 text-sm text-ink-muted">
+        有 GPU 走本机 AI；没有 GPU 可直接用云端免费生成，照片经浏览器直连云端。
+      </p>
 
       {/* AI 自动 */}
       <button
@@ -391,6 +441,17 @@ function MethodStep({
         )}
       </button>
 
+      {/* 云端免费生成（无需 GPU） */}
+      <CloudMethodCard
+        method={method}
+        setMethod={setMethod}
+        generating={generating}
+        photo={photo}
+        onRunCloudForge={onRunCloudForge}
+        onRunCloudHunyuan={onRunCloudHunyuan}
+        hunyuanInfo={hunyuanInfo}
+      />
+
       {/* 手动上传 */}
       <button
         onClick={() => setMethod('manual')}
@@ -434,6 +495,107 @@ function MethodStep({
 
       {error && (
         <p className="mt-3 rounded-[10px] bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-600">{error}</p>
+      )}
+    </div>
+  )
+}
+
+// 云端免费生成卡片（无需 GPU）
+function CloudMethodCard({
+  method,
+  setMethod,
+  generating,
+  photo,
+  onRunCloudForge,
+  onRunCloudHunyuan,
+  hunyuanInfo,
+}: {
+  method: Method
+  setMethod: (m: Method) => void
+  generating: boolean
+  photo: string | null
+  onRunCloudForge: () => void
+  onRunCloudHunyuan: () => void
+  hunyuanInfo: { webUrl: string; steps: string[]; fallbackNote: string } | null
+}) {
+  const selected = method === 'cloud'
+  return (
+    <div className="mt-3">
+      <button
+        onClick={() => setMethod('cloud')}
+        className={`clay-press w-full rounded-[var(--radius-clay)] border-2 p-4 text-left transition-all ${
+          selected ? 'border-candy bg-candy-soft' : 'border-line bg-surface'
+        }`}
+      >
+        <div className="flex items-center gap-2 font-bold text-ink">
+          <Cloud size={18} className="text-pink-500" /> 云端免费生成（无需 GPU）
+        </div>
+        <p className="mt-1 text-xs text-ink-muted">
+          浏览器直连云端 AI，照片不出本机。Forge 全自动出 GLB；Hunyuan3D 每天 20 次免费。
+        </p>
+      </button>
+
+      {selected && (
+        <div className="mt-3 space-y-3">
+          {/* Forge 自动生成 */}
+          <div className="rounded-[10px] border-2 border-line bg-surface p-3">
+            <div className="flex items-center gap-2 font-bold text-ink">
+              <Zap size={14} className="text-amber-500" /> Forge（全自动 · 免 Key）
+            </div>
+            <p className="mt-1 text-[11px] text-ink-muted">
+              基于 NVIDIA NIM + TRELLIS，提交后通常 1–3 分钟返回 GLB 模型（免费 draft 档）。
+            </p>
+            <button
+              onClick={onRunCloudForge}
+              disabled={!photo || generating}
+              className="clay-press mt-2 flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-clay-sm)] bg-candy py-2.5 font-bold text-white disabled:opacity-50"
+            >
+              {generating ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
+              {generating ? '云端生成中…（可能需 1–3 分钟）' : '用 Forge 一键生成 3D'}
+            </button>
+            {!photo && (
+              <p className="mt-1 text-[10px] font-semibold text-amber-600">请先在第一步上传照片。</p>
+            )}
+          </div>
+
+          {/* Hunyuan3D 网页版 */}
+          <div className="rounded-[10px] border-2 border-line bg-surface p-3">
+            <div className="flex items-center gap-2 font-bold text-ink">
+              <Box size={14} className="text-sky-500" /> Hunyuan3D（腾讯混元 · 网页版）
+            </div>
+            <p className="mt-1 text-[11px] text-ink-muted">
+              每天免费 20 次，无需账号，质量更高。需手动在网页生成后导入 GLB。
+            </p>
+            <button
+              onClick={onRunCloudHunyuan}
+              disabled={generating}
+              className="clay-press mt-2 flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-clay-sm)] bg-sky-500 py-2.5 font-bold text-white"
+            >
+              <ArrowRight size={16} /> 查看 Hunyuan3D 使用指引
+            </button>
+
+            {hunyuanInfo && (
+              <div className="mt-3 rounded-[10px] bg-sky-50 p-3">
+                <a
+                  href={hunyuanInfo.webUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-block break-all rounded-[8px] bg-sky-600 px-3 py-1.5 text-xs font-bold text-white"
+                >
+                  {hunyuanInfo.webUrl} ↗
+                </a>
+                <ol className="mt-2 space-y-1 text-[11px] text-ink">
+                  {hunyuanInfo.steps.map((s, i) => (
+                    <li key={i}>
+                      {i + 1}. {s}
+                    </li>
+                  ))}
+                </ol>
+                <p className="mt-2 text-[10px] text-ink-muted">{hunyuanInfo.fallbackNote}</p>
+              </div>
+            )}
+          </div>
+        </div>
       )}
     </div>
   )

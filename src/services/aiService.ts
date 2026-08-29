@@ -1,5 +1,11 @@
 import type { SkinId, ThreeViewSet } from '@/types'
 import { useAiStore } from '@/store/aiStore'
+import {
+  generateCloud3D,
+  getHunyuan3DInfo,
+  type CloudProvider,
+  type CloudGenerateResult,
+} from './cloudService'
 
 /**
  * AI 形象生成服务（调用本机桥接 → ComfyUI）
@@ -89,4 +95,43 @@ export async function generateModel3d(image: string, type: GenType): Promise<Blo
   const data = await postJSON<{ glb: string }>('/api/generate3d', { image, type })
   if (!data.glb) throw new AIServiceError('本机 AI 服务未返回 3D 模型数据。')
   return dataURLToBlob(data.glb)
+}
+
+// ─── 云端生成（无 GPU 用户专用） ───────────────────────────────
+
+/**
+ * 云端 3D 生成入口（无需 GPU、无需 Key）
+ *
+ * @param image   - 输入图片（base64 dataURL）
+ * @param type    - 宠物/人物类型（仅用于生成提示词）
+ * @param provider - 'forge'（自动）| 'hunyuan'（跳转网页手动）
+ */
+export async function generateModel3dCloud(
+  image: string,
+  type: GenType,
+  provider: CloudProvider = 'forge',
+): Promise<Blob> {
+  const isPet = type === 'pet'
+  const prompt = isPet
+    ? 'a cute cartoon pet character, full body, T-pose, white background, stylized 3D render'
+    : 'a cute cartoon human character, full body, T-pose, white background, stylized 3D render'
+
+  let result: CloudGenerateResult
+  try {
+    result = await generateCloud3D(image, { provider, prompt })
+  } catch (e) {
+    if (e instanceof Error && e.message.includes('Hunyuan3D 需手动')) {
+      throw new AIServiceError(getHunyuan3DInfo().webUrl) // 抛出网页 URL 让 UI 展示
+    }
+    throw e
+  }
+  return dataURLToBlob(result.glbDataUrl)
+}
+
+/**
+ * 获取云端 Hunyuan3D 的使用引导（返回网页 URL 字符串）
+ * 用于 UI 展示"请跳转到此链接手动操作"的提示。
+ */
+export function getHunyuan3DWebUrl(): string {
+  return getHunyuan3DInfo().webUrl
 }
