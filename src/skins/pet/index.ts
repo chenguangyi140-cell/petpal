@@ -5,7 +5,7 @@ import { petActionForEmotion } from './actions'
 import { petSpeciesOptions, petStrings } from './onboarding'
 import { wearables } from './catalog'
 import { petRules, petFallbackByEmotion, petProactiveByState, petProactiveByScene } from './chat'
-import { INTERACTIONS, INTERACTION_ORDER, TAP_FEEDBACK } from '@/constants/interactions'
+import { petInteractions, petInteractionOrder, petTapFeedback } from './interactions'
 
 /** 宠物皮肤：复刻原 PetPal 全部宠物行为，作为通用框架的第一个皮肤 */
 export const petSkin: SkinConfig = {
@@ -22,9 +22,9 @@ export const petSkin: SkinConfig = {
     proactiveByScene: petProactiveByScene,
   },
   actionForEmotion: petActionForEmotion,
-  interactions: INTERACTIONS,
-  interactionOrder: INTERACTION_ORDER,
-  tapFeedback: TAP_FEEDBACK,
+  interactions: petInteractions,
+  interactionOrder: petInteractionOrder,
+  tapFeedback: petTapFeedback,
   speciesOptions: petSpeciesOptions,
   wearables,
 }

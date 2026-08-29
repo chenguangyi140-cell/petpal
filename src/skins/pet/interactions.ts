@@ -1,26 +1,12 @@
-import type { MoodState, PetAction, PetEmotion } from '@/types'
+import type { InteractionDef, InteractionKind } from '../types'
+import type { MoodState } from '@/types'
 
-/** 互动类型 */
-export type InteractionKind = 'pet' | 'feed' | 'play' | 'groom' | 'rest' | 'bath' | 'photo' | 'train'
-
-/** 互动定义：数值与文案集中管理，便于平衡性调优 */
-export interface InteractionDef {
-  label: string
-  /** 图标（emoji 占位，UI 层统一换成 lucide SVG） */
-  glyph: string
-  /** 心情增量 */
-  delta: Partial<MoodState>
-  /** 触发的肢体动作 */
-  action: PetAction
-  /** 奖励经验 */
-  xp: number
-  /** 该互动下宠物可能的情绪 */
-  emotion: PetEmotion
-  /** 候选回复文案 */
-  replies: readonly string[]
-}
-
-export const INTERACTIONS: Readonly<Record<InteractionKind, InteractionDef>> = {
+/**
+ * 宠物互动：原 PetPal 的 8 个互动槽位，文案与动作均宠物向。
+ * 从全局 @/constants/interactions 迁入，使宠物皮肤完全自含，
+ * 不再与人物皮肤共享同一份常量。
+ */
+export const petInteractions: Record<InteractionKind, InteractionDef> = {
   pet: {
     label: '抚摸',
     glyph: '🤚',
@@ -96,7 +82,7 @@ export const INTERACTIONS: Readonly<Record<InteractionKind, InteractionDef>> = {
 }
 
 /** 互动展示顺序 */
-export const INTERACTION_ORDER: readonly InteractionKind[] = [
+export const petInteractionOrder: readonly InteractionKind[] = [
   'pet',
   'feed',
   'play',
@@ -111,7 +97,7 @@ export const INTERACTION_ORDER: readonly InteractionKind[] = [
  * 点击宠物本体的轻量反馈
  * 与正式互动区分：增益更小，避免狂点刷满心情
  */
-export const TAP_FEEDBACK: {
+export const petTapFeedback: {
   delta: Partial<MoodState>
   xp: number
   replies: readonly string[]

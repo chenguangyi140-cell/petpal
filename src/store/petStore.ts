@@ -8,6 +8,7 @@ import type {
   PetEmotion,
   PetProfile,
   PetSpecies,
+  PetWearable,
   SkinId,
   WearableOffset,
   WearableType,
@@ -19,8 +20,8 @@ import {
   decayMood,
   deriveEmotion,
 } from '@/engine/emotion'
-import { INTERACTIONS, TAP_FEEDBACK, type InteractionKind } from '@/constants/interactions'
-import { WEARABLE_CATALOG, MAKEUP_PRESETS } from '@/constants/catalog'
+import type { InteractionKind } from '@/skins/types'
+import { MAKEUP_PRESETS } from '@/constants/catalog'
 import { ASSET_KEYS, deleteAsset, loadAsset, saveAsset } from '@/services/storage'
 import { getSkin } from '@/skins/registry'
 
@@ -195,7 +196,8 @@ export const usePetStore = create<PetStore>()(
       },
 
       interact: (kind) => {
-        const def = INTERACTIONS[kind]
+        const skin = getSkin(get().profile?.skin ?? 'pet')
+        const def = skin.interactions[kind]
         const { mood, emotion, xp, isSleeping } = get()
 
         // 睡眠中仅允许「休息」唤醒之外的互动被忽略，避免状态机冲突
@@ -234,16 +236,17 @@ export const usePetStore = create<PetStore>()(
       },
 
       tap: () => {
+        const skin = getSkin(get().profile?.skin ?? 'pet')
         const { mood, emotion, xp, isSleeping } = get()
         if (isSleeping) return 'zzz…'
 
-        const nextMood = applyMoodDelta(mood, TAP_FEEDBACK.delta)
+        const nextMood = applyMoodDelta(mood, skin.tapFeedback.delta)
         set({
           mood: nextMood,
           emotion: deriveEmotion(nextMood, emotion),
-          xp: xp + TAP_FEEDBACK.xp,
+          xp: xp + skin.tapFeedback.xp,
         })
-        return pick(TAP_FEEDBACK.replies, '…')
+        return pick(skin.tapFeedback.replies, '…')
       },
 
       playAction: (action) => set({ action }),
@@ -260,7 +263,8 @@ export const usePetStore = create<PetStore>()(
       addXp: (n) => set((s) => ({ xp: s.xp + n })),
 
       equip: (wearableId) => {
-        const item = WEARABLE_CATALOG.find((w) => w.id === wearableId)
+        const skin = getSkin(get().profile?.skin ?? 'pet')
+        const item = skin.wearables.find((w) => w.id === wearableId)
         if (!item) return
         set((s) => ({
           equipped: { ...s.equipped, [item.type]: wearableId },
@@ -335,16 +339,18 @@ export const usePetStore = create<PetStore>()(
   ),
 )
 
-/** 已穿戴的完整单品列表（id → 对象解析） */
-export const selectEquippedItems = (s: PetStore) =>
-  Object.values(s.equipped)
+/** 已穿戴的完整单品列表（id → 对象解析，按当前皮肤的目录解析） */
+export const selectEquippedItems = (s: PetStore) => {
+  const skin = getSkin(s.profile?.skin ?? 'pet')
+  return Object.values(s.equipped)
     .filter((id): id is string => Boolean(id))
-    .map((id) => WEARABLE_CATALOG.find((w) => w.id === id))
-    .filter((w): w is (typeof WEARABLE_CATALOG)[number] => Boolean(w))
+    .map((id) => skin.wearables.find((w) => w.id === id))
+    .filter((w): w is PetWearable => Boolean(w))
     .map((w) => {
       const off = s.wearableOffsets[`${w.type}@${w.id}`]
       return off ? { ...w, anchor: { ...w.anchor, userOffset: off } } : w
     })
+}
 
 /** 亲密度等级派生 */
 export const selectBond = (s: PetStore) => computeBondLevel(s.xp)

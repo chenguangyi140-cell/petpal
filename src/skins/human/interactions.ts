@@ -1,5 +1,4 @@
-import type { InteractionDef, InteractionKind } from '@/constants/interactions'
-import { INTERACTION_ORDER } from '@/constants/interactions'
+import type { InteractionDef, InteractionKind } from '@/skins/types'
 
 /** 人物互动：复用 8 个互动槽位，但文案与动作换成人物向（拍拍/请客/聊天…） */
 export const humanInteractions: Record<InteractionKind, InteractionDef> = {
@@ -77,7 +76,16 @@ export const humanInteractions: Record<InteractionKind, InteractionDef> = {
   },
 }
 
-export const humanInteractionOrder = INTERACTION_ORDER
+export const humanInteractionOrder: readonly InteractionKind[] = [
+  'pet',
+  'feed',
+  'play',
+  'groom',
+  'rest',
+  'bath',
+  'photo',
+  'train',
+]
 
 export const humanTapFeedback = {
   delta: { happiness: 2, affection: 2 },

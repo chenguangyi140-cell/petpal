@@ -1,6 +1,28 @@
 import type { ComponentType } from 'react'
 import type { PetAction, PetAnchors, PetEmotion, MoodState, PetWearable } from '@/types'
-import type { InteractionDef, InteractionKind } from '@/constants/interactions'
+
+/**
+ * 互动类型（两皮肤共用 8 个互动槽位，但具体定义由各自皮肤提供）
+ * 放在框架层，使 pet/ 与 human/ 都从本文件取类型，互不依赖。
+ */
+export type InteractionKind = 'pet' | 'feed' | 'play' | 'groom' | 'rest' | 'bath' | 'photo' | 'train'
+
+/** 互动定义：数值与文案集中管理，便于平衡性调优 */
+export interface InteractionDef {
+  label: string
+  /** 图标（emoji 占位，UI 层统一换成 lucide SVG） */
+  glyph: string
+  /** 心情增量 */
+  delta: Partial<MoodState>
+  /** 触发的肢体动作 */
+  action: PetAction
+  /** 奖励经验 */
+  xp: number
+  /** 该互动下皮肤可能的情绪 */
+  emotion: PetEmotion
+  /** 候选回复文案 */
+  replies: readonly string[]
+}
 
 /** 皮肤相关的 UI 文案（避免界面写死「宠物」字样） */
 export interface SkinStrings {

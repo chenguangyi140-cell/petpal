@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { Check, Lock, MoveUp, MoveDown, MoveLeft, MoveRight, ZoomIn, ZoomOut } from 'lucide-react'
 import { usePetStore, selectBond } from '@/store/petStore'
-import { WEARABLE_CATALOG, WEARABLE_CATEGORIES } from '@/constants/catalog'
+import { WEARABLE_CATEGORIES } from '@/constants/catalog'
+import { getSkin } from '@/skins/registry'
 import type { WearableType } from '@/types'
 
 export function WardrobePanel() {
@@ -11,8 +12,9 @@ export function WardrobePanel() {
   const unequip = usePetStore((s) => s.unequip)
   const adjust = usePetStore((s) => s.adjustWearable)
   const bond = usePetStore(selectBond)
+  const wearables = getSkin(usePetStore((s) => s.profile?.skin ?? 'pet')).wearables
 
-  const visible = WEARABLE_CATALOG.filter(
+  const visible = wearables.filter(
     (w) => category === 'all' || w.type === category,
   )
 

@@ -1,24 +1,26 @@
 import { useState } from 'react'
 import { usePetStore } from '@/store/petStore'
 import { useChatStore } from '@/store/chatStore'
-import { INTERACTIONS, INTERACTION_ORDER, type InteractionKind } from '@/constants/interactions'
+import { getSkin } from '@/skins/registry'
+import type { InteractionKind } from '@/skins/types'
 
 export function ActionPanel() {
   const interact = usePetStore((s) => s.interact)
   const pushPetMessage = useChatStore((s) => s.pushPetMessage)
+  const skin = getSkin(usePetStore((s) => s.profile?.skin ?? 'pet'))
   const [lastReply, setLastReply] = useState<string | null>(null)
 
   const handle = (kind: InteractionKind) => {
     const reply = interact(kind)
     setLastReply(reply)
-    pushPetMessage(reply, { emotion: INTERACTIONS[kind].emotion, proactive: 'event' })
+    pushPetMessage(reply, { emotion: skin.interactions[kind].emotion, proactive: 'event' })
   }
 
   return (
     <div>
       <div className="grid grid-cols-4 gap-2.5">
-        {INTERACTION_ORDER.map((kind) => {
-          const def = INTERACTIONS[kind]
+        {skin.interactionOrder.map((kind) => {
+          const def = skin.interactions[kind]
           return (
             <button
               key={kind}
