@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { MessageCircle, Sparkles, Shirt, Palette, Settings } from 'lucide-react'
-import { usePetStore, selectBond } from '@/store/petStore'
+import { usePetStore, computeBondLevel } from '@/store/petStore'
 import { useLicenseStore, useLicenseActive } from '@/store/licenseStore'
 import { ActivationModal } from '@/components/ActivationModal'
 import { PetStage } from '@/components/PetStage'
@@ -28,7 +28,8 @@ export default function App() {
   const [tab, setTab] = useState<TabId>('chat')
   const profile = usePetStore((s) => s.profile)
   const hydrated = usePetStore((s) => s.hydrated)
-  const bond = usePetStore(selectBond)
+  const xp = usePetStore((s) => s.xp)
+  const bond = useMemo(() => computeBondLevel(xp), [xp])
   const skin = getSkin(profile?.skin)
 
   const licenseOk = useLicenseActive()

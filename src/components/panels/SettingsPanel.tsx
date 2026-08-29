@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import {
   Bell,
   Bot,
@@ -10,13 +10,14 @@ import {
   Trash2,
 } from 'lucide-react'
 import { useSettingsStore } from '@/store/settingsStore'
-import { usePetStore, selectBond } from '@/store/petStore'
+import { usePetStore, computeBondLevel } from '@/store/petStore'
 import { useLicenseStore } from '@/store/licenseStore'
 import { getSkin } from '@/skins/registry'
 
 export function SettingsPanel() {
   const settings = useSettingsStore()
-  const bond = usePetStore(selectBond)
+  const xp = usePetStore((s) => s.xp)
+  const bond = useMemo(() => computeBondLevel(xp), [xp])
   const profile = usePetStore((s) => s.profile)
   const skin = getSkin(profile?.skin)
   const removePet = usePetStore((s) => s.removePet)

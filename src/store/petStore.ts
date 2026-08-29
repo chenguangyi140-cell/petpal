@@ -8,7 +8,6 @@ import type {
   PetEmotion,
   PetProfile,
   PetSpecies,
-  PetWearable,
   SkinId,
   WearableOffset,
   WearableType,
@@ -16,10 +15,10 @@ import type {
 import {
   DEFAULT_MOOD,
   applyMoodDelta,
-  computeBondLevel,
   decayMood,
   deriveEmotion,
 } from '@/engine/emotion'
+export { computeBondLevel } from '@/engine/emotion'
 import type { InteractionKind } from '@/skins/types'
 import { MAKEUP_PRESETS } from '@/constants/catalog'
 import { ASSET_KEYS, deleteAsset, loadAsset, saveAsset } from '@/services/storage'
@@ -338,19 +337,3 @@ export const usePetStore = create<PetStore>()(
     },
   ),
 )
-
-/** 已穿戴的完整单品列表（id → 对象解析，按当前皮肤的目录解析） */
-export const selectEquippedItems = (s: PetStore) => {
-  const skin = getSkin(s.profile?.skin ?? 'pet')
-  return Object.values(s.equipped)
-    .filter((id): id is string => Boolean(id))
-    .map((id) => skin.wearables.find((w) => w.id === id))
-    .filter((w): w is PetWearable => Boolean(w))
-    .map((w) => {
-      const off = s.wearableOffsets[`${w.type}@${w.id}`]
-      return off ? { ...w, anchor: { ...w.anchor, userOffset: off } } : w
-    })
-}
-
-/** 亲密度等级派生 */
-export const selectBond = (s: PetStore) => computeBondLevel(s.xp)

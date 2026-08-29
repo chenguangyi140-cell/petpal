@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { Check, Lock, MoveUp, MoveDown, MoveLeft, MoveRight, ZoomIn, ZoomOut } from 'lucide-react'
-import { usePetStore, selectBond } from '@/store/petStore'
+import { usePetStore, computeBondLevel } from '@/store/petStore'
 import { WEARABLE_CATEGORIES } from '@/constants/catalog'
 import { getSkin } from '@/skins/registry'
 import type { WearableType } from '@/types'
@@ -11,7 +11,8 @@ export function WardrobePanel() {
   const equip = usePetStore((s) => s.equip)
   const unequip = usePetStore((s) => s.unequip)
   const adjust = usePetStore((s) => s.adjustWearable)
-  const bond = usePetStore(selectBond)
+  const xp = usePetStore((s) => s.xp)
+  const bond = useMemo(() => computeBondLevel(xp), [xp])
   const wearables = getSkin(usePetStore((s) => s.profile?.skin ?? 'pet')).wearables
 
   const visible = wearables.filter(
