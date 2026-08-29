@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { MessageCircle, Sparkles, Shirt, Palette, Settings } from 'lucide-react'
 import { usePetStore, selectBond } from '@/store/petStore'
+import { useLicenseStore, useLicenseActive } from '@/store/licenseStore'
+import { ActivationModal } from '@/components/ActivationModal'
 import { PetStage } from '@/components/PetStage'
 import { ChatPanel } from '@/components/panels/ChatPanel'
 import { ActionPanel } from '@/components/panels/ActionPanel'
@@ -27,20 +29,37 @@ export default function App() {
   const hydrated = usePetStore((s) => s.hydrated)
   const bond = usePetStore(selectBond)
 
+  const licenseOk = useLicenseActive()
+  const showActivation = useLicenseStore((s) => s.showActivation)
+  const closeActivation = useLicenseStore((s) => s.closeActivation)
+
   // 启动时从 IndexedDB 恢复照片资产（dataURL 过大不进 localStorage）
   useEffect(() => {
     void usePetStore.getState().hydrate()
   }, [])
 
+  // 开发/演示用一键激活：?demo=petpal（发布前请移除该分支）
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search)
+    if (p.get('demo') === 'petpal' && !useLicenseStore.getState().isActive()) {
+      useLicenseStore.getState().activateDemo(30)
+    }
+  }, [])
+
   useMoodTicker()
   useProactiveChat()
+
+  // 未激活：必须激活才能使用（手动收费模式 v1）
+  if (!licenseOk) {
+    return <ActivationModal dismissible={false} />
+  }
 
   // 未完成引导时展示创建流程
   if (!profile) {
     return <Onboarding />
   }
 
-  return (
+  const appTree = (
     <div className="mx-auto flex min-h-screen w-full max-w-[520px] flex-col bg-canvas">
       {/* 顶部栏 */}
       <header className="sticky top-0 z-20 flex items-center justify-between border-b border-line bg-surface/95 px-5 py-3 backdrop-blur">
@@ -96,5 +115,12 @@ export default function App() {
         <div className="pointer-events-none fixed inset-0 z-50 bg-canvas/60" aria-hidden />
       )}
     </div>
+  )
+
+  return (
+    <>
+      {appTree}
+      {showActivation && <ActivationModal dismissible onClose={closeActivation} />}
+    </>
   )
 }

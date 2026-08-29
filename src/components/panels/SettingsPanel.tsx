@@ -11,12 +11,19 @@ import {
 } from 'lucide-react'
 import { useSettingsStore } from '@/store/settingsStore'
 import { usePetStore, selectBond } from '@/store/petStore'
+import { useLicenseStore } from '@/store/licenseStore'
 
 export function SettingsPanel() {
   const settings = useSettingsStore()
   const bond = usePetStore(selectBond)
   const profile = usePetStore((s) => s.profile)
   const removePet = usePetStore((s) => s.removePet)
+
+  const active = useLicenseStore((s) => s.active)
+  const expiresAt = useLicenseStore((s) => s.expiresAt)
+  const deviceId = useLicenseStore((s) => s.deviceId)
+  const daysLeft = useLicenseStore((s) => s.daysLeft)()
+  const openActivation = useLicenseStore((s) => s.openActivation)
 
   const [showLLM, setShowLLM] = useState(false)
   const [confirmReset, setConfirmReset] = useState(false)
@@ -131,6 +138,34 @@ export function SettingsPanel() {
           checked={settings.reduceMotion}
           onChange={(v) => settings.update({ reduceMotion: v })}
         />
+      </Section>
+
+      {/* 会员 */}
+      <Section icon={<KeyRound size={16} />} title="会员">
+        {active && expiresAt ? (
+          <div className="rounded-[10px] bg-canvas p-3 text-xs text-ink-muted">
+            <p>
+              状态：<span className="font-bold text-mint">已激活</span>
+            </p>
+            <p className="mt-0.5">
+              有效期至 {new Date(expiresAt).toLocaleDateString('zh-CN')}（剩余 {daysLeft} 天）
+            </p>
+            <p className="mt-0.5 break-all">本机设备：{deviceId.slice(0, 8)}…</p>
+          </div>
+        ) : (
+          <p className="rounded-[10px] bg-canvas p-3 text-xs text-ink-muted">
+            尚未激活，激活后可长期使用并每月续费。
+          </p>
+        )}
+        <button
+          onClick={openActivation}
+          className="clay-press mt-2 flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-clay-sm)] bg-cta py-2.5 text-sm font-bold text-white"
+        >
+          {active ? '续费 / 重新激活' : '立即激活'}
+        </button>
+        <p className="mt-1.5 text-center text-[10px] text-ink-muted">
+          ¥99 首次 · ¥10/月 · 一个设备一授权
+        </p>
       </Section>
 
       {/* 危险区 */}
