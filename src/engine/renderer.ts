@@ -87,9 +87,21 @@ export class PetRenderer {
   /** 当前皮肤：决定情绪→动作映射等皮肤专有行为 */
   private skin: SkinConfig = getSkin('pet')
 
+  /** 指针位置（归一化 -1..1，0,0=中心），用于视差与眼神跟随 */
+  private pointer = { x: 0, y: 0 }
+  private pointerTarget = { x: 0, y: 0 }
+  /** 上次环境微光发射时刻，用于节流（避免粒子堆积） */
+  private lastAmbient = 0
+
   /** 切换皮肤（由上层在创建形象时调用） */
   setSkin(skin: SkinConfig): void {
     this.skin = skin
+  }
+
+  /** 更新指针位置（归一化 -1..1），由上层在画布 mousemove 时调用 */
+  setPointer(nx: number, ny: number): void {
+    this.pointerTarget.x = Math.max(-1, Math.min(1, nx))
+    this.pointerTarget.y = Math.max(-1, Math.min(1, ny))
   }
 
   /** 动作完成回调（供上层同步状态，如播放结束后触发对话） */
@@ -221,6 +233,42 @@ export class PetRenderer {
     const action = this.scheduler.currentAction
     const { emotion, reduceMotion } = this.state
 
+    // 指针缓动：让视差与眼神跟随更顺滑，避免鼠标抖动造成生硬跳变
+    this.pointer.x += (this.pointerTarget.x - this.pointer.x) * 0.08
+    this.pointer.y += (this.pointerTarget.y - this.pointer.y) * 0.08
+
+    // 场景暗角：制造「舞台感」，让主体从空白页面中浮出
+    this.drawBackdrop(W, H)
+
+    // 环境微光：缓慢上浮的星点，增加氛围生机（尊重 reduceMotion）
+    if (!reduceMotion && now - this.lastAmbient > 1500 && this.particles.length < 44) {
+      this.lastAmbient = now
+      this.particles.push({
+        x: Math.random() * W,
+        y: H * (0.68 + Math.random() * 0.28),
+        vx: (Math.random() - 0.5) * 0.15,
+        vy: -0.16 - Math.random() * 0.14,
+        life: 0,
+        maxLife: 3500 + Math.random() * 2500,
+        glyph: '✧',
+        size: 4 + Math.random() * 5,
+      })
+    }
+
+    // 眨眼：周期性闭眼约 140ms，是「活物」最关键的视觉信号
+    let openFactor = 1
+    if (!reduceMotion && emotion !== 'sleepy') {
+      const BLINK_PERIOD = 4200
+      const bp = (now % BLINK_PERIOD) / BLINK_PERIOD
+      if (bp > 0.94) {
+        const t = (bp - 0.94) / 0.06
+        openFactor = Math.max(0.08, Math.abs(Math.cos(t * Math.PI)))
+      }
+    }
+
+    // 眼神跟随：看向当前指针方向（已缓动）
+    const look = reduceMotion ? { x: 0, y: 0 } : { x: this.pointer.x, y: this.pointer.y }
+
     // L1 接地阴影：不随身体旋转，仅随腾空高度缩放，是纵深感的关键线索
     const shadow = computeShadowScale(action, progress, reduceMotion)
     this.drawShadow(W, H, shadow)
@@ -233,7 +281,10 @@ export class PetRenderer {
     ctx.translate(center.x, center.y)
     if (body.rotation !== 0) ctx.rotate(body.rotation)
     if (body.scaleX !== 1 || body.scaleY !== 1) ctx.scale(body.scaleX, body.scaleY)
-    ctx.translate(body.translateX * W, body.translateY * H)
+    // 指针视差：主体随光标轻微位移（与背景/阴影形成纵深），reduceMotion 时关闭
+    const parX = reduceMotion ? 0 : this.pointer.x * W * 0.018
+    const parY = reduceMotion ? 0 : this.pointer.y * H * 0.012
+    ctx.translate(body.translateX * W + parX, body.translateY * H + parY)
     ctx.translate(-center.x, -center.y)
 
     // L2 身体主体（照片或内置矢量宠物）
@@ -255,8 +306,8 @@ export class PetRenderer {
     // L5 化妆层：在表情之下，让妆容贴合皮毛而非盖住五官线条
     this.drawMakeup()
 
-    // L6 表情层
-    this.drawExpression()
+    // L6 表情层（传入眨眼与眼神跟随）
+    this.drawExpression(openFactor, look)
 
     // L3/L4 服装与配饰：绘制在表情之上，避免帽子被表情线条压住
     this.drawWearables()
@@ -271,16 +322,29 @@ export class PetRenderer {
 
   // ── 各图层绘制实现 ────────────────────────────────────────────
 
+  /** 场景暗角：极淡的径向渐变，制造舞台聚光感而不与明暗主题冲突 */
+  private drawBackdrop(W: number, H: number): void {
+    const { ctx } = this
+    const g = ctx.createRadialGradient(W / 2, H * 0.5, H * 0.12, W / 2, H * 0.5, H * 0.78)
+    g.addColorStop(0, 'rgba(0,0,0,0)')
+    g.addColorStop(1, 'rgba(0,0,0,0.07)')
+    ctx.save()
+    ctx.fillStyle = g
+    ctx.fillRect(0, 0, W, H)
+    ctx.restore()
+  }
+
   private drawShadow(W: number, H: number, shadow: { scale: number; opacity: number }): void {
     const box = this.anchors.bodyBox
     const cx = (box.x + box.width / 2) * W
     const cy = (box.y + box.height) * H * 0.99
-    const rx = box.width * 0.42 * W * shadow.scale
-    const ry = box.width * 0.11 * W * shadow.scale
+    const rx = box.width * 0.44 * W * shadow.scale
+    const ry = box.width * 0.13 * W * shadow.scale
 
     this.ctx.save()
-    this.ctx.fillStyle = `rgba(120, 90, 40, ${shadow.opacity})`
-    this.ctx.filter = 'blur(4px)'
+    // 中性深色、更大柔化，确保在浅色/深色背景上都能读出「落地阴影」
+    this.ctx.fillStyle = `rgba(15, 15, 20, ${shadow.opacity})`
+    this.ctx.filter = 'blur(7px)'
     this.ctx.beginPath()
     this.ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2)
     this.ctx.fill()
@@ -294,6 +358,10 @@ export class PetRenderer {
     // 高质量缩放，避免照片放大后模糊
     ctx.imageSmoothingEnabled = true
     ctx.imageSmoothingQuality = 'high'
+    // 投影光晕：沿去背图轮廓投出柔和阴影，让主体从背景「浮起」而非贴纸
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.30)'
+    ctx.shadowBlur = 20
+    ctx.shadowOffsetY = 7
     if (this.cutout) {
       ctx.drawImage(this.cutout, box.x, box.y, box.width, box.height)
     }
@@ -419,7 +487,7 @@ export class PetRenderer {
     }
   }
 
-  private drawExpression(): void {
+  private drawExpression(openFactor: number, look: { x: number; y: number }): void {
     const style = EXPRESSION_MAP[this.state.emotion]
     const face = this.px(this.anchors.headBox)
     const leftEye = this.pxPoint(this.anchors.leftEye)
@@ -432,7 +500,7 @@ export class PetRenderer {
       drawEmotionBlush(this.ctx, leftEye, rightEye, eyeSize)
     }
     drawBrows(this.ctx, leftEye, rightEye, style.browAngle, eyeSize)
-    drawEyes(this.ctx, leftEye, rightEye, style.eye, eyeSize)
+    drawEyes(this.ctx, leftEye, rightEye, style.eye, eyeSize, openFactor, look)
     drawMouth(this.ctx, mouth, style.mouth, eyeSize * 1.15)
 
     // 睡觉时绘制 Z 符号

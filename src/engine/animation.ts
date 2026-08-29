@@ -68,14 +68,16 @@ export function computeBodyTransform(
 
   switch (action) {
     case 'idle': {
-      // 呼吸：正弦驱动纵向缩放与轻微起伏，周期由 DURATION.idle 控制
+      // 呼吸 + 轻微左右摇摆 + 微旋转，构成有生命的「待机」而非均匀缩放
+      // 幅度较旧版（±1.2%）明显放大到 ±2%，否则肉眼几乎察觉不到
       const wave = Math.sin(p * Math.PI * 2)
+      const sway = Math.sin(p * Math.PI * 2 + Math.PI / 3)
       return {
-        translateX: 0,
-        translateY: wave * -0.012,
-        scaleX: 1 + wave * 0.008,
-        scaleY: 1 - wave * 0.012,
-        rotation: 0,
+        translateX: sway * 0.012,
+        translateY: wave * -0.02,
+        scaleX: 1 + wave * 0.013,
+        scaleY: 1 - wave * 0.02,
+        rotation: sway * 0.022,
       }
     }
 
@@ -230,8 +232,11 @@ export function computeTailRotation(
     case 'sleep':
       return 0.15 // 睡眠时尾巴自然垂落
     default:
-      // 待机时若情绪愉悦，尾巴保持轻微摆动
-      return emotionBoost > 0 ? Math.sin(p * Math.PI * 2) * 0.12 * emotionBoost : 0
+      // 待机尾巴：基础常驻轻摆（让宠物即使中性情绪也「活着」），
+      // 情绪愉悦时在此基础上叠加更大的摆动幅度
+      const base = Math.sin(p * Math.PI * 2) * 0.1
+      const boost = emotionBoost > 0 ? Math.sin(p * Math.PI * 2) * 0.12 * emotionBoost : 0
+      return base + boost
   }
 }
 

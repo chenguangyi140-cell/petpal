@@ -80,8 +80,21 @@ export function usePetRenderer(canvasRef: React.RefObject<HTMLCanvasElement | nu
     }
     canvas.addEventListener('click', handleClick)
 
+    // 指针移动：归一化到 -1..1，驱动视差与眼神跟随
+    const handleMove = (e: MouseEvent) => {
+      const r = canvas.getBoundingClientRect()
+      const nx = ((e.clientX - r.left) / r.width) * 2 - 1
+      const ny = ((e.clientY - r.top) / r.height) * 2 - 1
+      renderer.setPointer(nx, ny)
+    }
+    const handleLeave = () => renderer.setPointer(0, 0)
+    canvas.addEventListener('mousemove', handleMove)
+    canvas.addEventListener('mouseleave', handleLeave)
+
     return () => {
       canvas.removeEventListener('click', handleClick)
+      canvas.removeEventListener('mousemove', handleMove)
+      canvas.removeEventListener('mouseleave', handleLeave)
       ro.disconnect()
       renderer.destroy()
       rendererRef.current = null

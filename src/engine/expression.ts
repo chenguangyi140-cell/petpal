@@ -38,6 +38,8 @@ const INK = 'rgba(30, 41, 59, 0.85)'
 /**
  * 绘制眼睛
  * @param size 眼睛基准尺寸（像素），通常由脸部包围盒推导
+ * @param openFactor 睁眼程度 0（全闭）→ 1（全睁），用于程序化眨眼
+ * @param look 眼神朝向，归一化 {-1..1}，用于瞳孔/高光跟随光标
  */
 export function drawEyes(
   ctx: CanvasRenderingContext2D,
@@ -45,8 +47,14 @@ export function drawEyes(
   right: { x: number; y: number },
   style: EyeStyle,
   size: number,
+  openFactor = 1,
+  look: { x: number; y: number } = { x: 0, y: 0 },
 ): void {
   const r = size / 2
+  // 眨眼幅度限制：睡眠/闭眼态由 style 决定，此处不再额外压扁
+  const open = style === 'closed' ? 1 : Math.max(0.08, openFactor)
+  const lx = look.x * size * 0.28
+  const ly = look.y * size * 0.22
   ctx.save()
   ctx.strokeStyle = INK
   ctx.fillStyle = INK
@@ -54,6 +62,11 @@ export function drawEyes(
   ctx.lineCap = 'round'
 
   const drawEye = (cx: number, cy: number, mirror = 1) => {
+    // 以眼心为原点做纵向缩放实现眨眼（闭眼时压扁为一条线）
+    ctx.save()
+    ctx.translate(cx, cy)
+    ctx.scale(1, open)
+    ctx.translate(-cx, -cy)
     switch (style) {
       case 'happy': {
         // 弯月眼：向上凸起的弧线
@@ -91,29 +104,30 @@ export function drawEyes(
         break
       }
       case 'sparkle': {
-        // 高光眼：实心椭圆 + 白色高光点 + 小星星
+        // 高光眼：实心椭圆 + 白色高光点（随眼神偏移）+ 小星星
         ctx.beginPath()
         ctx.ellipse(cx, cy, r * 0.85, r, 0, 0, Math.PI * 2)
         ctx.fill()
         ctx.fillStyle = 'rgba(255,255,255,0.92)'
         ctx.beginPath()
-        ctx.arc(cx + r * 0.3, cy - r * 0.35, r * 0.32, 0, Math.PI * 2)
+        ctx.arc(cx + r * 0.3 + lx, cy - r * 0.35 + ly, r * 0.32, 0, Math.PI * 2)
         ctx.fill()
         ctx.fillStyle = INK
         break
       }
       default: {
-        // 常态眼：实心圆 + 高光
+        // 常态眼：实心圆 + 高光（随眼神偏移，形成「看向你」的观感）
         ctx.beginPath()
         ctx.ellipse(cx, cy, r * 0.82, r, 0, 0, Math.PI * 2)
         ctx.fill()
         ctx.fillStyle = 'rgba(255,255,255,0.9)'
         ctx.beginPath()
-        ctx.arc(cx + r * 0.28, cy - r * 0.3, r * 0.3, 0, Math.PI * 2)
+        ctx.arc(cx + r * 0.28 + lx, cy - r * 0.3 + ly, r * 0.3, 0, Math.PI * 2)
         ctx.fill()
         ctx.fillStyle = INK
       }
     }
+    ctx.restore()
   }
 
   drawEye(left.x, left.y, 1)
