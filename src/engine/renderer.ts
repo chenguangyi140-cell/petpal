@@ -445,7 +445,7 @@ export class PetRenderer {
     const now = performance.now()
     ctx.save()
     ctx.fillStyle = 'rgba(167, 139, 250, 0.85)'
-    ctx.font = '600 16px "Fredoka", system-ui, sans-serif'
+    ctx.font = '600 16px system-ui, -apple-system, sans-serif'
     for (let i = 0; i < 3; i++) {
       // 三个 Z 错峰上升淡出
       const phase = ((now / 2000 + i / 3) % 1)
@@ -453,7 +453,7 @@ export class PetRenderer {
       if (alpha <= 0.02) continue
       ctx.globalAlpha = alpha
       const size = 12 + i * 4
-      ctx.font = `600 ${size}px "Fredoka", system-ui, sans-serif`
+      ctx.font = `600 ${size}px system-ui, -apple-system, sans-serif`
       ctx.fillText('Z', face.x + face.width * (0.82 + i * 0.05), face.y - phase * 26 - i * 6)
     }
     ctx.restore()

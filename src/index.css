@@ -25,9 +25,9 @@
   --color-grape: #a78bfa;
   --color-grape-soft: #ede9fe;
 
-  /* 字体族 */
-  --font-heading: 'Fredoka', 'Nunito', system-ui, sans-serif;
-  --font-body: 'Nunito', system-ui, -apple-system, 'Microsoft YaHei', sans-serif;
+  /* 字体族：系统字体优先（国内零外部依赖，秒开）；Fredoka/Nunito 仅作本地已安装时的装饰性回退 */
+  --font-heading: system-ui, -apple-system, 'PingFang SC', 'Microsoft YaHei', 'Fredoka', 'Nunito', sans-serif;
+  --font-body: system-ui, -apple-system, 'PingFang SC', 'Microsoft YaHei', 'Nunito', sans-serif;
 
   /* 圆角：Claymorphism 需要饱满的圆角 */
   --radius-clay: 20px;
