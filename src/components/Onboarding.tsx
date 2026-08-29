@@ -13,6 +13,7 @@ import type { PetAnchors, PetSpecies, SkinId } from '@/types'
 import { usePetStore } from '@/store/petStore'
 import { compressImage, removeBackground } from '@/services/segmentation'
 import { getSkin, SKIN_IDS } from '@/skins/registry'
+import { AIImageStudio } from '@/components/AIImageStudio'
 
 type Step = 'info' | 'photo' | 'anchor'
 
@@ -56,6 +57,7 @@ export function Onboarding() {
   const [name, setName] = useState('')
   const [skinId, setSkinId] = useState<SkinId>('pet')
   const [species, setSpecies] = useState<PetSpecies>('cat')
+  const [showStudio, setShowStudio] = useState(false)
 
   const [processing, setProcessing] = useState(false)
   const [original, setOriginal] = useState<string | null>(null)
@@ -179,11 +181,26 @@ export function Onboarding() {
           )}
 
           <button
+            onClick={() => setShowStudio(true)}
+            className="clay-press mt-8 flex w-full items-center justify-center gap-2 rounded-[var(--radius-clay)] bg-gradient-to-r from-fuchsia-500 to-pink-500 py-4 font-heading text-lg font-bold text-white shadow-[var(--shadow-clay)] transition-transform active:scale-95"
+          >
+            <Sparkles size={20} />
+            ✨ AI 生成 3D 三视图形象
+          </button>
+          <p className="mt-2 text-center text-[11px] text-ink-muted">
+            上传 1 张照片 → 自动生成前/侧/后三视图或立体模型（本机 AI，照片不出设备）
+          </p>
+
+          <div className="my-4 flex items-center gap-3 text-[11px] font-bold text-ink-muted">
+            <span className="h-px flex-1 bg-line" />或<span className="h-px flex-1 bg-line" />
+          </div>
+
+          <button
             onClick={() => fileRef.current?.click()}
-            className="clay-press mt-8 flex w-full items-center justify-center gap-2 rounded-[var(--radius-clay)] bg-candy py-4 font-heading text-lg font-bold text-white shadow-[var(--shadow-clay)] transition-transform active:scale-95"
+            className="clay-press flex w-full items-center justify-center gap-2 rounded-[var(--radius-clay)] bg-surface py-4 font-heading text-lg font-bold text-ink shadow-[var(--shadow-clay)] transition-transform active:scale-95"
           >
             <Upload size={20} />
-            {skin.strings.photoButton}
+            {skin.strings.photoButton}（经典平面模式）
           </button>
           <input ref={fileRef} type="file" accept="image/*" hidden onChange={onFile} />
         </div>
@@ -310,6 +327,8 @@ export function Onboarding() {
           </div>
         </div>
       )}
+
+      {showStudio && <AIImageStudio mode="create" onClose={() => setShowStudio(false)} />}
     </div>
   )
 }

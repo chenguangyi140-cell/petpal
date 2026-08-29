@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type {
   MakeupItem,
+  ModelMode,
   MoodState,
   PetAction,
   PetAnchors,
@@ -9,6 +10,7 @@ import type {
   PetProfile,
   PetSpecies,
   SkinId,
+  ThreeViewSet,
   WearableOffset,
   WearableType,
 } from '@/types'
@@ -21,7 +23,15 @@ import {
 export { computeBondLevel } from '@/engine/emotion'
 import type { InteractionKind } from '@/skins/types'
 import { MAKEUP_PRESETS } from '@/constants/catalog'
-import { ASSET_KEYS, deleteAsset, loadAsset, saveAsset } from '@/services/storage'
+import {
+  ASSET_KEYS,
+  deleteAsset,
+  deleteAssetBlob,
+  loadAsset,
+  loadAssetBlob,
+  saveAsset,
+  saveAssetBlob,
+} from '@/services/storage'
 import { getSkin } from '@/skins/registry'
 
 /** 随机取一项（数组为空时返回兜底值，避免 undefined 扩散） */
@@ -44,6 +54,8 @@ interface PetState {
   lastTickAt: number
   /** 资产是否已完成 IndexedDB 水合 */
   hydrated: boolean
+  /** 3D 模型（GLB）的运行时对象 URL，仅内存态、不持久化；由 hydrate 从 IndexedDB 水合 */
+  model3dUrl: string | null
 }
 
 interface PetActions {
@@ -52,6 +64,12 @@ interface PetActions {
   updateProfile: (patch: Partial<Omit<PetProfile, 'cutoutDataUrl' | 'originalDataUrl'>>) => void
   setCutout: (dataUrl: string | null, original?: string | null) => Promise<void>
   setAnchors: (anchors: PetAnchors) => void
+  /** 写入三视图集合并持久化到 IndexedDB（modelMode 切换由调用方负责） */
+  setThreeViews: (views: ThreeViewSet) => Promise<void>
+  /** 写入 3D 模型（GLB Blob）并生成运行时对象 URL；传 null 清除 */
+  setModel3d: (blob: Blob | null) => Promise<void>
+  /** 切换形象渲染模式 */
+  setModelMode: (mode: ModelMode) => void
   renamePet: (name: string) => void
   removePet: () => Promise<void>
 
@@ -89,6 +107,9 @@ const createInitialProfile = (
   originalDataUrl: null,
   anchors: null,
   calibrated: false,
+  modelMode: 'flat',
+  threeViews: null,
+  hasModel3d: false,
   createdAt: Date.now(),
   updatedAt: Date.now(),
 })
@@ -105,6 +126,7 @@ const initialState: PetState = {
   isSleeping: false,
   lastTickAt: Date.now(),
   hydrated: false,
+  model3dUrl: null,
 }
 
 export const usePetStore = create<PetStore>()(
@@ -114,14 +136,35 @@ export const usePetStore = create<PetStore>()(
 
       /** 从 IndexedDB 恢复照片资产（dataURL 过大，不进 localStorage） */
       hydrate: async () => {
-        const [cutout, original] = await Promise.all([
+        const [cutout, original, threeViewsRaw, model3dBlob] = await Promise.all([
           loadAsset(ASSET_KEYS.cutout),
           loadAsset(ASSET_KEYS.original),
+          loadAsset(ASSET_KEYS.threeViews),
+          loadAssetBlob(ASSET_KEYS.model3d),
         ])
+        // 三视图：存的是序列化 JSON，需安全解析
+        let threeViews: ThreeViewSet | null = null
+        if (threeViewsRaw) {
+          try {
+            const parsed = JSON.parse(threeViewsRaw) as ThreeViewSet
+            if (parsed && typeof parsed === 'object') threeViews = parsed
+          } catch {
+            threeViews = null
+          }
+        }
+        const model3dUrl = model3dBlob ? URL.createObjectURL(model3dBlob) : null
+
         set((s) => ({
           hydrated: true,
+          model3dUrl,
           profile: s.profile
-            ? { ...s.profile, cutoutDataUrl: cutout, originalDataUrl: original }
+            ? {
+                ...s.profile,
+                cutoutDataUrl: cutout,
+                originalDataUrl: original,
+                threeViews,
+                hasModel3d: s.profile.hasModel3d || Boolean(model3dUrl),
+              }
             : null,
         }))
       },
@@ -163,6 +206,50 @@ export const usePetStore = create<PetStore>()(
           s.profile
             ? { profile: { ...s.profile, anchors, calibrated: true, updatedAt: Date.now() } }
             : s,
+        ),
+
+      setThreeViews: async (views) => {
+        await saveAsset(ASSET_KEYS.threeViews, JSON.stringify(views))
+        set((s) =>
+          s.profile
+            ? {
+                profile: {
+                  ...s.profile,
+                  threeViews: views,
+                  modelMode: 'threeView',
+                  updatedAt: Date.now(),
+                },
+              }
+            : s,
+        )
+      },
+
+      setModel3d: async (blob) => {
+        // 旧资产先清理，避免 Blob URL 泄漏
+        if (get().model3dUrl) URL.revokeObjectURL(get().model3dUrl as string)
+        if (!blob) {
+          await deleteAssetBlob(ASSET_KEYS.model3d)
+          set((s) => ({
+            model3dUrl: null,
+            profile: s.profile
+              ? { ...s.profile, hasModel3d: false, modelMode: 'flat', updatedAt: Date.now() }
+              : null,
+          }))
+          return
+        }
+        await saveAssetBlob(ASSET_KEYS.model3d, blob)
+        const url = URL.createObjectURL(blob)
+        set((s) => ({
+          model3dUrl: url,
+          profile: s.profile
+            ? { ...s.profile, hasModel3d: true, modelMode: 'model3d', updatedAt: Date.now() }
+            : null,
+        }))
+      },
+
+      setModelMode: (mode) =>
+        set((s) =>
+          s.profile ? { profile: { ...s.profile, modelMode: mode, updatedAt: Date.now() } } : s,
         ),
 
       renamePet: (name) =>
@@ -320,10 +407,11 @@ export const usePetStore = create<PetStore>()(
     {
       name: 'petpal.pet',
       version: 1,
-      // 照片不进 localStorage：体积大且已由 IndexedDB 单独管理
+      // 照片 / 三视图 / 3D 模型不进 localStorage：体积大且已由 IndexedDB 单独管理
+      // 仅保留 modelMode / hasModel3d 等小标记，供下次启动时决定从 IndexedDB 水合哪些资产
       partialize: (s) => ({
         profile: s.profile
-          ? { ...s.profile, cutoutDataUrl: null, originalDataUrl: null }
+          ? { ...s.profile, cutoutDataUrl: null, originalDataUrl: null, threeViews: null }
           : null,
         mood: s.mood,
         emotion: s.emotion,

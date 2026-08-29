@@ -29,7 +29,43 @@ function getDB(): Promise<IDBPDatabase> {
 export const ASSET_KEYS = {
   cutout: 'pet.cutout',
   original: 'pet.original',
+  /** 三视图集合（序列化后的 JSON 字符串，体积大不进 localStorage） */
+  threeViews: 'pet.threeViews',
+  /** 本机生成的 3D 模型（GLB Blob，二进制资产） */
+  model3d: 'pet.model3d',
 } as const
+
+/** 保存二进制资产（如 GLB 模型），通过 IndexedDB 避免 localStorage 配额问题 */
+export async function saveAssetBlob(key: string, value: Blob): Promise<void> {
+  try {
+    const db = await getDB()
+    await db.put(ASSET_STORE, value, key)
+  } catch (err) {
+    console.warn('[storage] saveAssetBlob failed', key, err)
+  }
+}
+
+/** 读取二进制资产，缺失或非 Blob 时返回 null */
+export async function loadAssetBlob(key: string): Promise<Blob | null> {
+  try {
+    const db = await getDB()
+    const value = await db.get(ASSET_STORE, key)
+    return value instanceof Blob ? value : null
+  } catch (err) {
+    console.warn('[storage] loadAssetBlob failed', key, err)
+    return null
+  }
+}
+
+/** 删除二进制资产 */
+export async function deleteAssetBlob(key: string): Promise<void> {
+  try {
+    const db = await getDB()
+    await db.delete(ASSET_STORE, key)
+  } catch (err) {
+    console.warn('[storage] deleteAssetBlob failed', key, err)
+  }
+}
 
 export async function saveAsset(key: string, value: string): Promise<void> {
   try {

@@ -6,6 +6,8 @@ import { useChatStore } from '@/store/chatStore'
 import { usePetRenderer } from '@/hooks/usePetRenderer'
 import { getSkin } from '@/skins/registry'
 import { getMoodAlerts } from '@/engine/emotion'
+import { ThreeViewStage } from '@/components/ThreeViewStage'
+import { Model3DStage } from '@/components/Model3DStage'
 
 /** 心情维度展示配置 */
 const MOOD_META: ReadonlyArray<{
@@ -32,6 +34,9 @@ export function PetStage() {
   const playAction = usePetStore((s) => s.playAction)
   const messages = useChatStore((s) => s.messages)
   const skinId = usePetStore((s) => s.profile?.skin)
+  const modelMode = usePetStore((s) => s.profile?.modelMode)
+  const threeViews = usePetStore((s) => s.profile?.threeViews)
+  const model3dUrl = usePetStore((s) => s.model3dUrl)
   const skin = getSkin(skinId)
 
   const renderer = usePetRenderer(canvasRef)
@@ -75,7 +80,7 @@ export function PetStage() {
   const alerts = getMoodAlerts(mood)
 
   return (
-    <section className="relative flex-1 overflow-hidden bg-gradient-to-b from-sky-100 via-sky-50 to-amber-50">
+    <div className="relative flex flex-1 flex-col overflow-hidden">
       {/* 心情指标 */}
       <div className="absolute top-4 left-4 z-10 flex flex-col gap-2">
         {MOOD_META.map(({ key, label, Icon, barClass, textClass }) => (
@@ -107,19 +112,25 @@ export function PetStage() {
         </div>
       )}
 
-      {/* Canvas 渲染区 */}
-      <div className="flex h-[380px] w-full items-center justify-center sm:h-[420px]">
-        <canvas
-          ref={canvasRef}
-          className="cursor-pointer"
-          role="img"
-          aria-label={`${skin.strings.entityWord}${usePetStore.getState().profile?.name ?? ''}，当前情绪：${EMOTION_LABEL[emotion]}`}
-        />
-      </div>
-
-      {/* 地面 */}
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-20 rounded-t-[50%] bg-gradient-to-b from-amber-100 to-amber-200" />
-    </section>
+      {/* 舞台：按形象渲染模式切换 */}
+      {modelMode === 'model3d' && model3dUrl ? (
+        <Model3DStage />
+      ) : modelMode === 'threeView' && threeViews ? (
+        <ThreeViewStage />
+      ) : (
+        <section className="relative flex-1 overflow-hidden bg-gradient-to-b from-sky-100 via-sky-50 to-amber-50">
+          <div className="flex h-[380px] w-full items-center justify-center sm:h-[420px]">
+            <canvas
+              ref={canvasRef}
+              className="cursor-pointer"
+              role="img"
+              aria-label={`${skin.strings.entityWord}${usePetStore.getState().profile?.name ?? ''}，当前情绪：${EMOTION_LABEL[emotion]}`}
+            />
+          </div>
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-20 rounded-t-[50%] bg-gradient-to-b from-amber-100 to-amber-200" />
+        </section>
+      )}
+    </div>
   )
 }
 

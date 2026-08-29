@@ -1,0 +1,20 @@
+{
+  "threeView": {
+    "workflow": "./workflows/3view.json",
+    "inputNode": "10",
+    "inputField": "image",
+    "outputNodes": {
+      "front": "10",
+      "side": null,
+      "back": null
+    }
+  },
+  "model3d": {
+    "workflow": "./workflows/3d.json",
+    "inputNode": "10",
+    "inputField": "image",
+    "outputNodes": {
+      "glb": null
+    }
+  }
+}

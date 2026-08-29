@@ -7,12 +7,15 @@ import {
   Link2,
   Moon,
   RotateCcw,
+  Sparkles,
   Trash2,
 } from 'lucide-react'
 import { useSettingsStore } from '@/store/settingsStore'
 import { usePetStore, computeBondLevel } from '@/store/petStore'
 import { useLicenseStore } from '@/store/licenseStore'
+import { useAiStore } from '@/store/aiStore'
 import { getSkin } from '@/skins/registry'
+import { AIImageStudio } from '@/components/AIImageStudio'
 
 export function SettingsPanel() {
   const settings = useSettingsStore()
@@ -30,6 +33,12 @@ export function SettingsPanel() {
 
   const [showLLM, setShowLLM] = useState(false)
   const [confirmReset, setConfirmReset] = useState(false)
+  const [showStudio, setShowStudio] = useState(false)
+
+  const aiEndpoint = useAiStore((s) => s.endpoint)
+  const setAiEndpoint = useAiStore((s) => s.setEndpoint)
+  const modelModeLabel =
+    profile?.modelMode === 'model3d' ? '真·3D 模型' : profile?.modelMode === 'threeView' ? '三视图转盘' : '经典平面照片'
 
   return (
     <div className="space-y-4">
@@ -143,6 +152,34 @@ export function SettingsPanel() {
         />
       </Section>
 
+      {/* AI 形象生成 */}
+      <Section icon={<Sparkles size={16} />} title="AI 形象">
+        <div className="rounded-[10px] bg-canvas p-3 text-xs text-ink-muted">
+          <p>
+            当前形象模式：<span className="font-bold text-ink">{modelModeLabel}</span>
+          </p>
+          <p className="mt-0.5">用本机 AI（ComfyUI）从一张照片生成三视图或立体模型，照片不出设备。</p>
+        </div>
+        <button
+          onClick={() => setShowStudio(true)}
+          className="clay-press mt-2 flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-clay-sm)] bg-gradient-to-r from-fuchsia-500 to-pink-500 py-2.5 text-sm font-bold text-white"
+        >
+          <Sparkles size={15} /> 用 AI 重新生成形象
+        </button>
+
+        <Field label="本机 AI 桥接地址">
+          <input
+            value={aiEndpoint}
+            onChange={(e) => setAiEndpoint(e.target.value)}
+            className="input-sm"
+            placeholder="http://localhost:8787"
+          />
+        </Field>
+        <p className="mt-1 text-[10px] text-ink-muted">
+          运行 tools/bridge/server.mjs 后此处填其地址；留空默认 http://localhost:8787。
+        </p>
+      </Section>
+
       {/* 会员 */}
       <Section icon={<KeyRound size={16} />} title="会员">
         {active && expiresAt ? (
@@ -205,6 +242,8 @@ export function SettingsPanel() {
       </Section>
 
       <p className="pt-2 text-center text-[11px] text-ink-muted">PetPal · 你的零成本陪伴 · v0.1.0</p>
+
+      {showStudio && <AIImageStudio mode="edit" onClose={() => setShowStudio(false)} />}
     </div>
   )
 }

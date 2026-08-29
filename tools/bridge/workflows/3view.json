@@ -1,0 +1,9 @@
+{
+  "10": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "petpal_placeholder.png",
+      "upload": "image"
+    }
+  }
+}

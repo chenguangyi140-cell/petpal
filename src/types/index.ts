@@ -164,6 +164,24 @@ export interface PetAnchors {
   tailRoot?: Point | null
 }
 
+/**
+ * 形象渲染模式
+ * - flat：经典平面去背照片（原方案）
+ * - threeView：由前/侧/后三视图拼出的可旋转转盘（2.5D 实拍感）
+ * - model3d：本机 ComfyUI 生成的真·3D 模型（GLB），可自由拖拽旋转
+ */
+export type ModelMode = 'flat' | 'threeView' | 'model3d'
+
+/**
+ * 三视图图像集合（dataURL，含 alpha 通道）
+ * 任意一项允许为 null：缺失的视角在转盘中回退到相邻视角，保证不崩。
+ */
+export interface ThreeViewSet {
+  front: string | null
+  side: string | null
+  back: string | null
+}
+
 /** 宠物档案 */
 export interface PetProfile {
   id: string
@@ -178,6 +196,18 @@ export interface PetProfile {
   anchors: PetAnchors | null
   /** 是否已通过引导流程完成标定 */
   calibrated: boolean
+  /**
+   * 形象渲染模式（默认 flat 以兼容旧档案）
+   * 由 AI 形象工坊在生成三视图 / 3D 模型后写入。
+   */
+  modelMode: ModelMode
+  /**
+   * 三视图图像集合（modelMode==='threeView' 时有效）
+   * 体积较大，dataURL 不进 localStorage，由 IndexedDB 单独管理（见 ASSET_KEYS.threeViews）
+   */
+  threeViews: ThreeViewSet | null
+  /** 是否存在本机生成的 3D 模型资产（modelMode==='model3d' 时有效，GLB 存于 IndexedDB） */
+  hasModel3d: boolean
   createdAt: number
   updatedAt: number
 }
