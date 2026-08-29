@@ -20,8 +20,15 @@ export interface Rect {
   height: number
 }
 
-/** 宠物种类 */
+/** 宠物种类（仅在宠物皮肤内用于引导阶段的物种细分） */
 export type PetSpecies = 'cat' | 'dog' | 'other'
+
+/**
+ * 形象皮肤：通用形象框架之上的「宠物 / 人物」两套外观与人格。
+ * 引擎与 UI 通过 profile.skin 从皮肤注册表读取对应配置，
+ * 从而在不改写核心渲染/情绪逻辑的前提下切换形象类型。
+ */
+export type SkinId = 'pet' | 'human'
 
 /** 身体挂靠部件 */
 export type BodyPart = 'body' | 'head' | 'neck' | 'tail'
@@ -153,14 +160,16 @@ export interface PetAnchors {
   mouth: Point
   /** 鼻子中心（化妆层唇彩/腮红的定位基准） */
   nose: Point
-  /** 尾巴根部挂点；无尾巴或照片中不可见时为 null */
-  tailRoot: Point | null
+  /** 尾巴根部挂点；无尾巴（如人物皮肤）或照片中不可见时为 null/undefined */
+  tailRoot?: Point | null
 }
 
 /** 宠物档案 */
 export interface PetProfile {
   id: string
   name: string
+  /** 形象皮肤：决定锚点比例、人格、互动与服装配置 */
+  skin: SkinId
   species: PetSpecies
   /** 去背后的主体图（dataURL，含 alpha 通道） */
   cutoutDataUrl: string | null
@@ -176,7 +185,9 @@ export interface PetProfile {
 /** 肢体动作 */
 export type PetAction =
   | 'idle' // 待机呼吸
-  | 'wagTail' // 摇尾巴
+  | 'wagTail' // 摇尾巴（宠物）
+  | 'cheer' // 开心摇摆（人物，无尾）
+  | 'wave' // 挥手致意（人物）
   | 'stretch' // 伸懒腰
   | 'jump' // 跳跃
   | 'roll' // 打滚

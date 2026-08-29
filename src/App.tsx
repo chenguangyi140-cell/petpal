@@ -10,6 +10,7 @@ import { WardrobePanel } from '@/components/panels/WardrobePanel'
 import { MakeupPanel } from '@/components/panels/MakeupPanel'
 import { SettingsPanel } from '@/components/panels/SettingsPanel'
 import { Onboarding } from '@/components/Onboarding'
+import { getSkin } from '@/skins/registry'
 import { useMoodTicker } from '@/hooks/useMoodTicker'
 import { useProactiveChat } from '@/hooks/useProactiveChat'
 
@@ -28,6 +29,7 @@ export default function App() {
   const profile = usePetStore((s) => s.profile)
   const hydrated = usePetStore((s) => s.hydrated)
   const bond = usePetStore(selectBond)
+  const skin = getSkin(profile?.skin)
 
   const licenseOk = useLicenseActive()
   const showActivation = useLicenseStore((s) => s.showActivation)
@@ -64,7 +66,7 @@ export default function App() {
       {/* 顶部栏 */}
       <header className="sticky top-0 z-20 flex items-center justify-between border-b border-line bg-surface/95 px-5 py-3 backdrop-blur">
         <div className="flex items-center gap-2 font-heading text-xl text-primary">
-          <span className="text-2xl leading-none">🐾</span>
+          <span className="text-2xl leading-none">{skin.strings.appEmoji}</span>
           <span>{profile.name}</span>
         </div>
         <div className="flex gap-2">

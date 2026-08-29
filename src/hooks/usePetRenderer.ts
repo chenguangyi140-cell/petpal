@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from 'react'
 import { PetRenderer } from '@/engine/renderer'
 import { usePetStore, selectEquippedItems } from '@/store/petStore'
 import { useSettingsStore } from '@/store/settingsStore'
+import { getSkin } from '@/skins/registry'
 
 /**
  * 管理 PetRenderer 生命周期并与 store 状态同步
@@ -17,10 +18,17 @@ export function usePetRenderer(canvasRef: React.RefObject<HTMLCanvasElement | nu
   const emotion = usePetStore((s) => s.emotion)
   const action = usePetStore((s) => s.action)
   const makeup = usePetStore((s) => s.makeup)
+  const skinId = usePetStore((s) => s.profile?.skin)
   const cutout = usePetStore((s) => s.profile?.cutoutDataUrl ?? null)
   const anchors = usePetStore((s) => s.profile?.anchors ?? null)
   const equipped = usePetStore(selectEquippedItems)
   const reduceMotion = useSettingsStore((s) => s.shouldReduceMotion())
+
+  // 皮肤切换：profile?.skin 变化时通知渲染器切换 SkinConfig
+  // （动作映射、默认锚点、尾巴开关等都由皮肤决定，引擎本身无感）
+  useEffect(() => {
+    rendererRef.current?.setSkin(getSkin(skinId))
+  }, [skinId])
 
   // 初始化渲染器与尺寸监听
   useEffect(() => {

@@ -5,6 +5,7 @@ import { usePetStore } from './petStore'
 import { useSettingsStore } from './settingsStore'
 import { generateLocalReply, type ChatContext } from '@/services/chatEngine'
 import { chatWithLLM } from '@/services/llm'
+import { getSkin } from '@/skins/registry'
 
 const MAX_HISTORY = 100
 
@@ -69,13 +70,12 @@ export const useChatStore = create<ChatStore>()(
         const pet = usePetStore.getState()
         const settings = useSettingsStore.getState()
         const petName = pet.profile?.name ?? '小暖'
-        const species = pet.profile?.species ?? 'cat'
+        const skinId = pet.profile?.skin ?? 'pet'
+        const skin = getSkin(skinId)
 
         const ctx: ChatContext = {
-          petName,
           emotion: pet.emotion,
-          mood: pet.mood,
-          species,
+          skin,
         }
 
         const userMsg = makeMsg('user', content)
@@ -95,7 +95,7 @@ export const useChatStore = create<ChatStore>()(
               messages: history,
               settings: settings.llm,
               petName,
-              species,
+              skinId,
             })
             replyText = reply.text
             replyEmotion = reply.emotion

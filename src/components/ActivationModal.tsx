@@ -39,7 +39,7 @@ export function ActivationModal({ dismissible = false, onClose }: Props) {
         <div className="mb-5 flex flex-col items-center text-center">
           <div className="text-4xl leading-none">🐾</div>
           <h1 className="mt-2 font-heading text-2xl text-primary">PetPal 会员激活</h1>
-          <p className="mt-1 text-xs text-ink-muted">用你家的宠物，养一只会陪你的小家伙</p>
+          <p className="mt-1 text-xs text-ink-muted">用一张照片，养一个会陪你聊天、有情绪的专属伙伴</p>
         </div>
 
         {/* 定价卡 */}

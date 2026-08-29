@@ -2,16 +2,16 @@ import { useEffect, useRef } from 'react'
 import { usePetStore } from '@/store/petStore'
 import { useChatStore } from '@/store/chatStore'
 import { useSettingsStore } from '@/store/settingsStore'
-import { PROACTIVE_BY_SCENE, PROACTIVE_BY_STATE } from '@/services/chatEngine'
 import type { PetEmotion, ProactiveTrigger } from '@/types'
+import { getSkin } from '@/skins/registry'
 
 const LAST_SEEN_KEY = 'petpal.lastSeenAt'
 
 /** 判定为「久别重逢」的时长阈值 */
 const LONG_ABSENCE_MS = 2 * 60 * 60 * 1000
 
-const pickOne = <T,>(arr: readonly T[], fallback: T): T =>
-  arr.length === 0 ? fallback : (arr[Math.floor(Math.random() * arr.length)] as T)
+const pickOne = <T,>(arr: readonly T[] | undefined, fallback: T): T =>
+  arr && arr.length > 0 ? (arr[Math.floor(Math.random() * arr.length)] as T) : fallback
 
 /**
  * 主动对话调度
@@ -30,6 +30,7 @@ export function useProactiveChat(checkIntervalMs = 45_000) {
     const pet = usePetStore.getState()
     if (!pet.profile) return // 尚未创建宠物档案时不打扰
     triggeredRef.current = true
+    const corpus = getSkin(pet.profile.skin).chat
 
     const now = Date.now()
     const lastSeen = Number(localStorage.getItem(LAST_SEEN_KEY) ?? 0)
@@ -44,18 +45,18 @@ export function useProactiveChat(checkIntervalMs = 45_000) {
       let trigger: ProactiveTrigger = 'scene'
 
       if (absent > LONG_ABSENCE_MS) {
-        content = pickOne(PROACTIVE_BY_SCENE.longAbsence, '你终于回来啦！')
+        content = pickOne(corpus.proactiveByScene.longAbsence, '你终于回来啦！')
         emotion = 'sweet'
       } else {
         const hour = new Date().getHours()
         if (hour >= 5 && hour < 10) {
-          content = pickOne(PROACTIVE_BY_SCENE.morning, '早上好！')
+          content = pickOne(corpus.proactiveByScene.morning, '早上好！')
           emotion = 'happy'
         } else if (hour >= 21 || hour < 5) {
-          content = pickOne(PROACTIVE_BY_SCENE.night, '晚安～')
+          content = pickOne(corpus.proactiveByScene.night, '晚安～')
           emotion = 'sleepy'
         } else {
-          content = pickOne(PROACTIVE_BY_SCENE.coldStart, '你来啦！')
+          content = pickOne(corpus.proactiveByScene.coldStart, '你来啦！')
           emotion = 'happy'
         }
       }
@@ -76,24 +77,25 @@ export function useProactiveChat(checkIntervalMs = 45_000) {
       if (!canProactive()) return
 
       const { mood } = pet
-      let pool: readonly string[]
+      const corpus = getSkin(pet.profile.skin).chat
+      let pool: readonly string[] | undefined
       let emotion: PetEmotion
 
       // 优先级：生理需求 > 情感需求 > 随口闲聊
       if (mood.hunger >= 70) {
-        pool = PROACTIVE_BY_STATE.hungry
+        pool = corpus.proactiveByState.hungry
         emotion = 'hungry'
       } else if (mood.energy <= 25) {
-        pool = PROACTIVE_BY_STATE.sleepy
+        pool = corpus.proactiveByState.sleepy
         emotion = 'sleepy'
       } else if (mood.happiness <= 40) {
-        pool = PROACTIVE_BY_STATE.bored
+        pool = corpus.proactiveByState.bored
         emotion = 'sweet'
       } else if (mood.affection >= 70) {
-        pool = PROACTIVE_BY_STATE.affectionate
+        pool = corpus.proactiveByState.affectionate
         emotion = 'sweet'
       } else {
-        pool = PROACTIVE_BY_STATE.idle
+        pool = corpus.proactiveByState.idle
         emotion = 'neutral'
       }
 

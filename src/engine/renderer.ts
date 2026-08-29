@@ -9,6 +9,8 @@ import type {
   Point,
   Rect,
 } from '@/types'
+import type { SkinConfig } from '@/skins/types'
+import { getSkin } from '@/skins/registry'
 import { MAKEUP_TYPES } from '@/constants/catalog'
 import {
   computeBodyTransform,
@@ -33,16 +35,8 @@ export interface RendererState {
   reduceMotion: boolean
 }
 
-/** 默认锚点：未标定时的兜底布局，保证未上传照片也能正常渲染 */
-export const DEFAULT_ANCHORS: PetAnchors = {
-  bodyBox: { x: 0.18, y: 0.3, width: 0.64, height: 0.58 },
-  headBox: { x: 0.24, y: 0.08, width: 0.52, height: 0.42 },
-  leftEye: { x: 0.38, y: 0.32 },
-  rightEye: { x: 0.62, y: 0.32 },
-  mouth: { x: 0.5, y: 0.42 },
-  nose: { x: 0.5, y: 0.375 },
-  tailRoot: { x: 0.8, y: 0.66 },
-}
+/** 默认锚点：未标定时的兜底布局（取自宠物皮肤，保证未上传照片也能正常渲染） */
+export const DEFAULT_ANCHORS: PetAnchors = getSkin('pet').defaultAnchors
 
 /** 情绪愉悦度 → 尾巴摆动强度 */
 const EMOTION_WAG_BOOST: Readonly<Record<PetEmotion, number>> = {
@@ -90,6 +84,13 @@ export class PetRenderer {
   private dpr = 1
   /** 一次性动作完成后的回归动作 */
   private pendingFallback: PetAction = 'idle'
+  /** 当前皮肤：决定情绪→动作映射等皮肤专有行为 */
+  private skin: SkinConfig = getSkin('pet')
+
+  /** 切换皮肤（由上层在创建形象时调用） */
+  setSkin(skin: SkinConfig): void {
+    this.skin = skin
+  }
 
   /** 动作完成回调（供上层同步状态，如播放结束后触发对话） */
   onActionComplete?: (action: PetAction) => void
@@ -133,7 +134,7 @@ export class PetRenderer {
       })
     }
     if (next.emotion) {
-      this.pendingFallback = next.emotion === 'sleepy' ? 'sleep' : next.emotion === 'happy' || next.emotion === 'sweet' ? 'wagTail' : 'idle'
+      this.pendingFallback = this.skin.actionForEmotion(next.emotion)
     }
   }
 

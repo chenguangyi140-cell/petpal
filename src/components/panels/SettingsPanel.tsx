@@ -12,11 +12,13 @@ import {
 import { useSettingsStore } from '@/store/settingsStore'
 import { usePetStore, selectBond } from '@/store/petStore'
 import { useLicenseStore } from '@/store/licenseStore'
+import { getSkin } from '@/skins/registry'
 
 export function SettingsPanel() {
   const settings = useSettingsStore()
   const bond = usePetStore(selectBond)
   const profile = usePetStore((s) => s.profile)
+  const skin = getSkin(profile?.skin)
   const removePet = usePetStore((s) => s.removePet)
 
   const active = useLicenseStore((s) => s.active)
@@ -94,7 +96,7 @@ export function SettingsPanel() {
       {/* 主动对话 */}
       <Section icon={<Bell size={16} />} title="主动互动">
         <Toggle
-          label="允许宠物主动找你聊天"
+          label={skin.strings.proactiveToggleLabel}
           checked={settings.proactiveEnabled}
           onChange={(v) => settings.update({ proactiveEnabled: v })}
         />
@@ -172,7 +174,7 @@ export function SettingsPanel() {
       <Section icon={<Trash2 size={16} />} title="数据">
         <div className="rounded-[10px] bg-canvas p-3 text-xs text-ink-muted">
           <p>
-            宠物：<span className="font-bold text-ink">{profile?.name}</span> · Lv.{bond.level}
+            {skin.strings.entityWord}：<span className="font-bold text-ink">{profile?.name}</span> · Lv.{bond.level}
           </p>
           <p className="mt-0.5">所有照片与状态均仅存储在本机，不会上传任何服务器。</p>
         </div>
@@ -181,7 +183,7 @@ export function SettingsPanel() {
             onClick={() => setConfirmReset(true)}
             className="clay-press mt-2 flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-clay-sm)] bg-surface py-2.5 text-sm font-bold text-cta"
           >
-            <RotateCcw size={15} /> 重置宠物（重新引导）
+            <RotateCcw size={15} /> {skin.strings.resetButtonLabel}
           </button>
         ) : (
           <div className="mt-2 flex gap-2">
@@ -201,7 +203,7 @@ export function SettingsPanel() {
         )}
       </Section>
 
-      <p className="pt-2 text-center text-[11px] text-ink-muted">PetPal · 你的零成本宠物陪伴 · v0.1.0</p>
+      <p className="pt-2 text-center text-[11px] text-ink-muted">PetPal · 你的零成本陪伴 · v0.1.0</p>
     </div>
   )
 }

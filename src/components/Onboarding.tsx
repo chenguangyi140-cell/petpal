@@ -3,85 +3,32 @@ import {
   ArrowLeft,
   ArrowRight,
   Camera,
-  Cat,
-  Dog,
   PawPrint,
   RefreshCw,
   SlidersHorizontal,
   Sparkles,
   Upload,
 } from 'lucide-react'
-import type { PetAnchors, PetSpecies } from '@/types'
+import type { PetAnchors, PetSpecies, SkinId } from '@/types'
 import { usePetStore } from '@/store/petStore'
 import { compressImage, removeBackground } from '@/services/segmentation'
-import { DEFAULT_ANCHORS } from '@/engine/renderer'
+import { getSkin, SKIN_IDS } from '@/skins/registry'
 
 type Step = 'info' | 'photo' | 'anchor'
 
-const SPECIES: ReadonlyArray<{ id: PetSpecies; label: string; Icon: typeof Cat }> = [
-  { id: 'cat', label: '猫咪', Icon: Cat },
-  { id: 'dog', label: '狗狗', Icon: Dog },
-  { id: 'other', label: '其他', Icon: PawPrint },
-]
-
-/**
- * 从去背图推断锚点：扫描 alpha 通道找主体包围盒，
- * 头部取主体上部区域，五官按头部比例估算。
- * 这是 MVP 的「自动标定」；精细校正留给用户在主界面的微调 UI。
- */
-async function estimateAnchors(dataUrl: string): Promise<PetAnchors> {
-  const img = await loadImage(dataUrl)
-  const w = img.width
-  const h = img.height
-  const canvas = document.createElement('canvas')
-  canvas.width = w
-  canvas.height = h
-  const ctx = canvas.getContext('2d', { willReadFrequently: true })
-  if (!ctx) return DEFAULT_ANCHORS
-
-  ctx.drawImage(img, 0, 0)
-  const { data } = ctx.getImageData(0, 0, w, h)
-
-  let minX = w
-  let minY = h
-  let maxX = 0
-  let maxY = 0
-  let found = false
-  for (let y = 0; y < h; y += 2) {
-    for (let x = 0; x < w; x += 2) {
-      const a = data[(y * w + x) * 4 + 3] ?? 0
-      if (a > 12) {
-        found = true
-        if (x < minX) minX = x
-        if (x > maxX) maxX = x
-        if (y < minY) minY = y
-        if (y > maxY) maxY = y
-      }
-    }
-  }
-  if (!found) return DEFAULT_ANCHORS
-
-  const bw = (maxX - minX) / w
-  const bh = (maxY - minY) / h
-  const bx = minX / w
-  const by = minY / h
-
-  const bodyBox = { x: bx, y: by, width: bw, height: bh }
-  const headH = bh * 0.5
-  const headBox = { x: bx, y: by, width: bw, height: headH }
-
-  return {
-    bodyBox,
-    headBox,
-    leftEye: { x: bx + bw * 0.34, y: by + headH * 0.42 },
-    rightEye: { x: bx + bw * 0.66, y: by + headH * 0.42 },
-    mouth: { x: bx + bw * 0.5, y: by + headH * 0.74 },
-    nose: { x: bx + bw * 0.5, y: by + headH * 0.58 },
-    tailRoot: { x: bx + bw * 1.02, y: by + bh * 0.62 },
-  }
+interface Adjust {
+  bodyDx: number
+  bodyDy: number
+  bodyScale: number
+  headDy: number
 }
 
-/** 应用用户微调偏移（整体平移 + 身体缩放，面部随身体平移保持比例） */
+const NO_ADJUST: Adjust = { bodyDx: 0, bodyDy: 0, bodyScale: 1, headDy: 0 }
+
+/**
+ * 应用用户微调偏移（整体平移 + 身体缩放，面部随身体平移保持比例）
+ * 与具体形象类型无关，通用逻辑。
+ */
 function applyAdjust(base: PetAnchors, a: Adjust): PetAnchors {
   const { bodyBox, headBox } = base
   const cx = bodyBox.x + bodyBox.width / 2
@@ -104,18 +51,10 @@ function applyAdjust(base: PetAnchors, a: Adjust): PetAnchors {
   }
 }
 
-interface Adjust {
-  bodyDx: number
-  bodyDy: number
-  bodyScale: number
-  headDy: number
-}
-
-const NO_ADJUST: Adjust = { bodyDx: 0, bodyDy: 0, bodyScale: 1, headDy: 0 }
-
 export function Onboarding() {
   const [step, setStep] = useState<Step>('info')
   const [name, setName] = useState('')
+  const [skinId, setSkinId] = useState<SkinId>('pet')
   const [species, setSpecies] = useState<PetSpecies>('cat')
 
   const [processing, setProcessing] = useState(false)
@@ -124,7 +63,8 @@ export function Onboarding() {
   const [tolerance, setTolerance] = useState(42)
   const [bgRatio, setBgRatio] = useState<number | null>(null)
 
-  const [baseAnchors, setBaseAnchors] = useState<PetAnchors>(DEFAULT_ANCHORS)
+  const skin = getSkin(skinId)
+  const [baseAnchors, setBaseAnchors] = useState<PetAnchors>(skin.defaultAnchors)
   const [adjust, setAdjust] = useState<Adjust>(NO_ADJUST)
 
   const fileRef = useRef<HTMLInputElement>(null)
@@ -139,12 +79,13 @@ export function Onboarding() {
         const result = await removeBackground(src, { tolerance, feather: true })
         setCutout(result.dataUrl)
         setBgRatio(result.backgroundRatio)
-        setBaseAnchors(await estimateAnchors(result.dataUrl))
+        // 锚点估算交给当前皮肤（宠物/人物头身比不同）
+        setBaseAnchors(await getSkin(skinId).estimateAnchors(result.dataUrl))
       } finally {
         setProcessing(false)
       }
     },
-    [tolerance],
+    [tolerance, skinId],
   )
 
   const onFile = useCallback(
@@ -162,10 +103,11 @@ export function Onboarding() {
 
   const finish = useCallback(async () => {
     const finalAnchors = applyAdjust(baseAnchors, adjust)
-    createProfile(name.trim() || '我的宠物', species)
+    const defaultName = skinId === 'human' ? '我的伙伴' : '我的宠物'
+    createProfile(name.trim() || defaultName, skinId, species)
     await setCutoutStore(cutout, original)
     setAnchorsStore(finalAnchors)
-  }, [baseAnchors, adjust, name, species, createProfile, setCutoutStore, setAnchorsStore, cutout, original])
+  }, [baseAnchors, adjust, name, skinId, species, createProfile, setCutoutStore, setAnchorsStore, cutout, original])
 
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-[520px] flex-col bg-canvas px-5 py-8">
@@ -186,40 +128,62 @@ export function Onboarding() {
           <div className="mb-4 flex h-20 w-20 items-center justify-center rounded-[28px] bg-candy-soft text-4xl shadow-[var(--shadow-clay)]">
             <PawPrint className="text-pink-500" size={40} strokeWidth={2} />
           </div>
-          <h1 className="font-heading text-2xl text-primary">认识你的宠物伙伴</h1>
-          <p className="mt-2 max-w-xs text-sm text-ink-muted">
-            上传一张它的照片，它会成为能陪你聊天、有情绪、会撒娇的专属伙伴。
-          </p>
+          <h1 className="font-heading text-2xl text-primary">{skin.strings.onboardingHero}</h1>
+          <p className="mt-2 max-w-xs text-sm text-ink-muted">{skin.strings.onboardingSub}</p>
 
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="给它起个名字"
+            placeholder={skin.strings.namePlaceholder}
             maxLength={12}
             className="mt-8 w-full rounded-[var(--radius-clay-sm)] border-2 border-line bg-surface px-4 py-3 text-center text-lg font-bold text-ink outline-none transition-colors focus:border-candy"
           />
 
-          <div className="mt-5 grid w-full grid-cols-3 gap-3">
-            {SPECIES.map(({ id, label, Icon }) => (
-              <button
-                key={id}
-                onClick={() => setSpecies(id)}
-                className={`clay-press flex cursor-pointer flex-col items-center gap-1.5 rounded-[var(--radius-clay-sm)] border-2 py-4 transition-all duration-200 ${
-                  species === id ? 'border-candy bg-candy-soft' : 'border-line bg-surface'
-                }`}
-              >
-                <Icon size={28} className={species === id ? 'text-pink-500' : 'text-ink-muted'} />
-                <span className={`text-xs font-bold ${species === id ? 'text-pink-600' : 'text-ink-muted'}`}>{label}</span>
-              </button>
-            ))}
+          {/* 形象类型选择：宠物 / 人物 */}
+          <div className="mt-6 w-full">
+            <div className="mb-2 text-left text-xs font-bold text-ink-muted">选择形象类型</div>
+            <div className="grid w-full grid-cols-2 gap-3">
+              {SKIN_IDS.map((id) => (
+                <button
+                  key={id}
+                  onClick={() => {
+                    setSkinId(id)
+                    setBaseAnchors(getSkin(id).defaultAnchors)
+                  }}
+                  className={`clay-press flex cursor-pointer items-center justify-center gap-2 rounded-[var(--radius-clay-sm)] border-2 py-3 text-sm font-bold transition-all duration-200 ${
+                    skinId === id ? 'border-candy bg-candy-soft text-pink-600' : 'border-line bg-surface text-ink-muted'
+                  }`}
+                >
+                  {getSkin(id).displayName}
+                </button>
+              ))}
+            </div>
           </div>
+
+          {/* 物种细分（仅宠物皮肤提供，人物皮肤为空则跳过） */}
+          {skin.speciesOptions.length > 0 && (
+            <div className="mt-5 grid w-full grid-cols-3 gap-3">
+              {skin.speciesOptions.map(({ id, label, Icon }) => (
+                <button
+                  key={id}
+                  onClick={() => setSpecies(id as PetSpecies)}
+                  className={`clay-press flex cursor-pointer flex-col items-center gap-1.5 rounded-[var(--radius-clay-sm)] border-2 py-4 transition-all duration-200 ${
+                    species === id ? 'border-candy bg-candy-soft' : 'border-line bg-surface'
+                  }`}
+                >
+                  <Icon size={28} className={species === id ? 'text-pink-500' : 'text-ink-muted'} />
+                  <span className={`text-xs font-bold ${species === id ? 'text-pink-600' : 'text-ink-muted'}`}>{label}</span>
+                </button>
+              ))}
+            </div>
+          )}
 
           <button
             onClick={() => fileRef.current?.click()}
             className="clay-press mt-8 flex w-full items-center justify-center gap-2 rounded-[var(--radius-clay)] bg-candy py-4 font-heading text-lg font-bold text-white shadow-[var(--shadow-clay)] transition-transform active:scale-95"
           >
             <Upload size={20} />
-            选择宠物照片
+            {skin.strings.photoButton}
           </button>
           <input ref={fileRef} type="file" accept="image/*" hidden onChange={onFile} />
         </div>
@@ -305,7 +269,7 @@ export function Onboarding() {
 
           <div className="mt-3 rounded-[var(--radius-clay-sm)] bg-surface p-4">
             <div className="flex items-center gap-1.5 text-xs font-bold text-ink-muted">
-              <Sparkles size={14} /> 微调（多数照片可跳过）
+              <Sparkles size={14} /> {skin.strings.anchorTuningHint}
             </div>
             <div className="mt-3 space-y-3">
               <AdjustRow
@@ -341,7 +305,7 @@ export function Onboarding() {
               disabled={!cutout}
               className="clay-press flex flex-1 items-center justify-center gap-1 rounded-[var(--radius-clay)] bg-candy py-3 font-heading font-bold text-white shadow-[var(--shadow-clay)] disabled:opacity-50"
             >
-              <Camera size={18} /> 完成创建
+              <Camera size={18} /> {skin.strings.createButton}
             </button>
           </div>
         </div>
@@ -411,15 +375,5 @@ function fileToDataUrl(file: File): Promise<string> {
     reader.onload = () => resolve(reader.result as string)
     reader.onerror = () => reject(new Error('文件读取失败'))
     reader.readAsDataURL(file)
-  })
-}
-
-function loadImage(src: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const img = new Image()
-    img.crossOrigin = 'anonymous'
-    img.onload = () => resolve(img)
-    img.onerror = () => reject(new Error('image load failed'))
-    img.src = src
   })
 }

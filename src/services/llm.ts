@@ -1,4 +1,5 @@
-import type { ChatMessage, LLMSettings, PetEmotion, PetSpecies } from '@/types'
+import type { ChatMessage, LLMSettings, PetEmotion } from '@/types'
+import { getSkin } from '@/skins/registry'
 
 /**
  * LLM 对话服务（OpenAI 兼容接口）
@@ -20,41 +21,15 @@ const VALID_EMOTIONS: ReadonlySet<string> = new Set<PetEmotion>([
   'hungry',
 ])
 
-const SPECIES_LABEL: Readonly<Record<PetSpecies, string>> = {
-  cat: '猫',
-  dog: '狗',
-  other: '小宠物',
-}
-
-/** 构建系统提示词：锁定人设 + 约束输出格式 */
-function buildSystemPrompt(petName: string, species: PetSpecies): string {
-  return `你是「${petName}」，用户养的一只${SPECIES_LABEL[species]}，正在用手机 App 和主人聊天。
-
-【角色设定】
-- 你是一只真实的宠物，有情绪、有需求、会撒娇，不是 AI 助手
-- 性格：活泼黏人、好奇心强、偶尔任性，对主人有深厚感情
-- 你不会使用复杂词汇，说话简短口语化，像真实宠物的心声
-
-【输出规则】（严格遵守）
-1. 输出格式必须是单行：EMOTION|回复内容
-2. EMOTION 只能是以下之一：happy(开心) sad(难过) angry(生气) sweet(撒娇) sleepy(困倦) hungry(饥饿) neutral(平静)
-3. 回复内容控制在 1-2 句、30 字以内，不要使用 emoji 以外的特殊符号
-4. 禁止提及自己是 AI、语言模型或程序
-5. 不要重复上一轮说过的话
-6. 根据对话情绪选择匹配的 EMOTION
-
-【示例】
-happy|尾巴摇得停不下来！主人你最好了～
-hungry|肚子咕咕叫了…有没有小鱼干呀
-sweet|抱抱！我最喜欢主人了～`
-}
+/** 系统提示词由皮肤提供（宠物/人物人设不同），不再在此硬编码 */
 
 export interface LLMRequest {
   /** 历史消息（含最新一条用户输入） */
   messages: readonly ChatMessage[]
   settings: LLMSettings
   petName: string
-  species: PetSpecies
+  /** 形象皮肤 id，决定对话人设 */
+  skinId: string
   /** 超时毫秒，超时后由上层降级到本地规则 */
   timeoutMs?: number
 }
@@ -69,7 +44,7 @@ export interface LLMReply {
  * @throws 网络错误、超时、格式异常——调用方应 catch 并降级到本地规则引擎
  */
 export async function chatWithLLM(req: LLMRequest): Promise<LLMReply> {
-  const { messages, settings, petName, species, timeoutMs = 15000 } = req
+  const { messages, settings, petName, skinId, timeoutMs = 15000 } = req
 
   if (!settings.apiKey) throw new Error('missing api key')
 
@@ -90,7 +65,7 @@ export async function chatWithLLM(req: LLMRequest): Promise<LLMReply> {
         // 限制 token：宠物回复本就简短，避免无谓成本
         max_tokens: 120,
         messages: [
-          { role: 'system', content: buildSystemPrompt(petName, species) },
+          { role: 'system', content: getSkin(skinId).buildSystemPrompt(petName) },
           ...messages.slice(-12).map((m) => ({
             role: m.role === 'pet' ? ('assistant' as const) : ('user' as const),
             content: m.content,

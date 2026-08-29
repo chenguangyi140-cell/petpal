@@ -8,6 +8,7 @@ import type {
   PetEmotion,
   PetProfile,
   PetSpecies,
+  SkinId,
   WearableOffset,
   WearableType,
 } from '@/types'
@@ -17,11 +18,11 @@ import {
   computeBondLevel,
   decayMood,
   deriveEmotion,
-  suggestAction,
 } from '@/engine/emotion'
 import { INTERACTIONS, TAP_FEEDBACK, type InteractionKind } from '@/constants/interactions'
 import { WEARABLE_CATALOG, MAKEUP_PRESETS } from '@/constants/catalog'
 import { ASSET_KEYS, deleteAsset, loadAsset, saveAsset } from '@/services/storage'
+import { getSkin } from '@/skins/registry'
 
 /** 随机取一项（数组为空时返回兜底值，避免 undefined 扩散） */
 const pick = <T,>(arr: readonly T[], fallback: T): T =>
@@ -47,7 +48,7 @@ interface PetState {
 
 interface PetActions {
   hydrate: () => Promise<void>
-  createProfile: (name: string, species: PetSpecies) => void
+  createProfile: (name: string, skin?: SkinId, species?: PetSpecies) => void
   updateProfile: (patch: Partial<Omit<PetProfile, 'cutoutDataUrl' | 'originalDataUrl'>>) => void
   setCutout: (dataUrl: string | null, original?: string | null) => Promise<void>
   setAnchors: (anchors: PetAnchors) => void
@@ -75,9 +76,14 @@ interface PetActions {
 
 export type PetStore = PetState & PetActions
 
-const createInitialProfile = (name: string, species: PetSpecies): PetProfile => ({
+const createInitialProfile = (
+  name: string,
+  skin: SkinId = 'pet',
+  species: PetSpecies = 'cat',
+): PetProfile => ({
   id: crypto.randomUUID(),
   name,
+  skin,
   species,
   cutoutDataUrl: null,
   originalDataUrl: null,
@@ -120,9 +126,9 @@ export const usePetStore = create<PetStore>()(
         }))
       },
 
-      createProfile: (name, species) =>
+      createProfile: (name, skin = 'pet', species = 'cat') =>
         set({
-          profile: createInitialProfile(name, species),
+          profile: createInitialProfile(name, skin, species),
           mood: DEFAULT_MOOD,
           emotion: 'happy',
           xp: 0,
@@ -183,7 +189,7 @@ export const usePetStore = create<PetStore>()(
         set({
           mood: nextMood,
           emotion: nextEmotion,
-          action: isSleeping ? 'sleep' : suggestAction(nextEmotion),
+          action: isSleeping ? 'sleep' : getSkin(get().profile?.skin ?? 'pet').actionForEmotion(nextEmotion),
           lastTickAt: now,
         })
       },
@@ -242,7 +248,7 @@ export const usePetStore = create<PetStore>()(
 
       playAction: (action) => set({ action }),
 
-      setEmotion: (emotion) => set({ emotion, action: suggestAction(emotion) }),
+      setEmotion: (emotion) => set({ emotion, action: getSkin(get().profile?.skin ?? 'pet').actionForEmotion(emotion) }),
 
       setSleeping: (v) =>
         set((s) => ({

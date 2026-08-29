@@ -111,23 +111,10 @@ export function deriveEmotion(
 
 /**
  * 由情绪推导建议的肢体动作
- * 让表情与动作联动，而不是各自随机——随机组合会出现「哭着跳跃」的违和感
+ *
+ * 现已委托给皮肤配置（skin.actionForEmotion），引擎不再硬编码宠物动作；
+ * 保留此注释说明职责归属，避免后续误回到情绪层写死动作。
  */
-export function suggestAction(emotion: PetEmotion): 'idle' | 'wagTail' | 'sleep' {
-  switch (emotion) {
-    case 'happy':
-    case 'sweet':
-      return 'wagTail' // 尾巴是宠物表达愉悦最本能的部位
-    case 'sleepy':
-      return 'sleep'
-    case 'sad':
-    case 'hungry':
-    case 'angry':
-      return 'idle' // 负面情绪下动作收敛，形成情绪对比
-    default:
-      return 'idle'
-  }
-}
 
 /** 心情值的健康度摘要，用于 UI 提示（如「该喂食了」） */
 export function getMoodAlerts(mood: MoodState): ReadonlyArray<{

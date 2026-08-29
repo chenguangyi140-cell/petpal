@@ -21,6 +21,8 @@ export const IDENTITY_TRANSFORM: Transform = {
 const DURATION: Readonly<Record<PetAction, number>> = {
   idle: 2400, // 循环周期
   wagTail: 1800, // 循环周期
+  cheer: 1600, // 循环周期（人物开心摇摆，无尾）
+  wave: 900, // 一次性（人物挥手致意）
   jump: 620,
   roll: 1000,
   stretch: 900,
@@ -31,6 +33,7 @@ const DURATION: Readonly<Record<PetAction, number>> = {
 export const LOOPING_ACTIONS: ReadonlySet<PetAction> = new Set<PetAction>([
   'idle',
   'wagTail',
+  'cheer',
   'sleep',
 ])
 
@@ -85,6 +88,30 @@ export function computeBodyTransform(
         scaleX: 1,
         scaleY: 1,
         rotation: wave * 0.015,
+      }
+    }
+
+    case 'cheer': {
+      // 人物开心摇摆：身体轻微左右摆动 + 起伏（视觉近似摇尾但无尾）
+      const wave = Math.sin(p * Math.PI * 2)
+      return {
+        translateX: wave * 0.008,
+        translateY: Math.abs(Math.sin(p * Math.PI * 2)) * -0.006,
+        scaleX: 1,
+        scaleY: 1,
+        rotation: wave * 0.012,
+      }
+    }
+
+    case 'wave': {
+      // 人物挥手致意：身体极轻微摆动（手部摆动由表情层表达，此处仅作身体呼应）
+      const wave = Math.sin(p * Math.PI * 2)
+      return {
+        translateX: wave * 0.006,
+        translateY: 0,
+        scaleX: 1,
+        scaleY: 1,
+        rotation: wave * 0.02,
       }
     }
 
@@ -186,6 +213,9 @@ export function computeTailRotation(
   const p = Math.min(1, Math.max(0, t))
 
   switch (action) {
+    case 'cheer':
+    case 'wave':
+      return 0 // 人物无尾，不摆尾
     case 'wagTail': {
       // 正弦摆动，emotionBoost 让愉悦情绪下摆幅更大、频率更快
       const freq = 2 + emotionBoost * 1.5

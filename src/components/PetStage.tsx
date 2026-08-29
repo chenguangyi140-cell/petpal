@@ -4,6 +4,7 @@ import type { MoodState } from '@/types'
 import { usePetStore } from '@/store/petStore'
 import { useChatStore } from '@/store/chatStore'
 import { usePetRenderer } from '@/hooks/usePetRenderer'
+import { getSkin } from '@/skins/registry'
 import { getMoodAlerts } from '@/engine/emotion'
 
 /** 心情维度展示配置 */
@@ -30,6 +31,8 @@ export function PetStage() {
   const tap = usePetStore((s) => s.tap)
   const playAction = usePetStore((s) => s.playAction)
   const messages = useChatStore((s) => s.messages)
+  const skinId = usePetStore((s) => s.profile?.skin)
+  const skin = getSkin(skinId)
 
   const renderer = usePetRenderer(canvasRef)
 
@@ -110,7 +113,7 @@ export function PetStage() {
           ref={canvasRef}
           className="cursor-pointer"
           role="img"
-          aria-label={`宠物${usePetStore.getState().profile?.name ?? ''}，当前情绪：${EMOTION_LABEL[emotion]}`}
+          aria-label={`${skin.strings.entityWord}${usePetStore.getState().profile?.name ?? ''}，当前情绪：${EMOTION_LABEL[emotion]}`}
         />
       </div>
 
