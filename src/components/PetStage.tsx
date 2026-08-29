@@ -48,6 +48,32 @@ export function PetStage() {
     bubbleTimer.current = window.setTimeout(() => setBubble(null), 4000)
   }, [])
 
+  // ── 音频同步事件处理 ──
+  useEffect(() => {
+    const handleStartMic = () => {
+      renderer.startAudioFromMic?.()
+    }
+    const handleStopAudio = () => {
+      renderer.stopAudio?.()
+    }
+    const handlePlayAudio = (e: Event) => {
+      const audioEl = (e as CustomEvent<{ audioEl: HTMLAudioElement }>).detail?.audioEl
+      if (audioEl) {
+        renderer.attachAudioElement?.(audioEl)
+      }
+    }
+
+    window.addEventListener('petpal:start-mic' as any, handleStartMic as any)
+    window.addEventListener('petpal:stop-audio' as any, handleStopAudio as any)
+    window.addEventListener('petpal:play-audio' as any, handlePlayAudio as any)
+
+    return () => {
+      window.removeEventListener('petpal:start-mic' as any, handleStartMic as any)
+      window.removeEventListener('petpal:stop-audio' as any, handleStopAudio as any)
+      window.removeEventListener('petpal:play-audio' as any, handlePlayAudio as any)
+    }
+  }, [renderer])
+
   // 点击宠物本体：轻量互动 + 随机动作反馈
   useEffect(() => {
     renderer.setTapHandler(() => {

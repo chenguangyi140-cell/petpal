@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { MessageCircle, Sparkles, Shirt, Palette, Settings } from 'lucide-react'
+import { MessageCircle, Sparkles, Shirt, Palette, Settings, Music } from 'lucide-react'
 import { usePetStore, computeBondLevel } from '@/store/petStore'
 import { useLicenseStore, useLicenseActive } from '@/store/licenseStore'
 import { ActivationModal } from '@/components/ActivationModal'
@@ -9,16 +9,18 @@ import { ActionPanel } from '@/components/panels/ActionPanel'
 import { WardrobePanel } from '@/components/panels/WardrobePanel'
 import { MakeupPanel } from '@/components/panels/MakeupPanel'
 import { SettingsPanel } from '@/components/panels/SettingsPanel'
+import { AudioPanel } from '@/components/panels/AudioPanel'
 import { Onboarding } from '@/components/Onboarding'
 import { getSkin } from '@/skins/registry'
 import { useMoodTicker } from '@/hooks/useMoodTicker'
 import { useProactiveChat } from '@/hooks/useProactiveChat'
 
-type TabId = 'chat' | 'play' | 'wardrobe' | 'makeup' | 'settings'
+type TabId = 'chat' | 'play' | 'audio' | 'wardrobe' | 'makeup' | 'settings'
 
 const TABS: ReadonlyArray<{ id: TabId; label: string; Icon: typeof MessageCircle }> = [
   { id: 'chat', label: '聊天', Icon: MessageCircle },
   { id: 'play', label: '互动', Icon: Sparkles },
+  { id: 'audio', label: '声音', Icon: Music },
   { id: 'wardrobe', label: '换装', Icon: Shirt },
   { id: 'makeup', label: '化妆', Icon: Palette },
   { id: 'settings', label: '设置', Icon: Settings },
@@ -107,6 +109,7 @@ export default function App() {
         <div className="min-h-[280px]">
           {tab === 'chat' && <ChatPanel />}
           {tab === 'play' && <ActionPanel />}
+          {tab === 'audio' && <AudioPanel />}
           {tab === 'wardrobe' && <WardrobePanel />}
           {tab === 'makeup' && <MakeupPanel />}
           {tab === 'settings' && <SettingsPanel />}

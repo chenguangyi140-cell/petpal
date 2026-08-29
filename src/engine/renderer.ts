@@ -24,7 +24,11 @@ import {
   drawEmotionBlush,
   drawEyes,
   drawMouth,
+  type MouthStyle,
 } from './expression'
+import { AudioAnalyzer, type AudioEnvelope } from './audioAnalyzer'
+import { LipSync } from './lipSync'
+import { BodySync, type BodySyncOffset } from './bodySync'
 
 /** 渲染器输入状态（由外部 store 驱动，渲染器本身无状态业务） */
 export interface RendererState {
@@ -93,6 +97,15 @@ export class PetRenderer {
   /** 上次环境微光发射时刻，用于节流（避免粒子堆积） */
   private lastAmbient = 0
 
+  /** 音频分析引擎 */
+  private audioAnalyzer: AudioAnalyzer | null = null
+  /** 口型同步器 */
+  private lipSync: LipSync
+  /** 身体节奏同步 */
+  private bodySync: BodySync
+  /** 当前是否处于音频驱动模式 */
+  private isAudioPlaying = false
+
   /** 切换皮肤（由上层在创建形象时调用） */
   setSkin(skin: SkinConfig): void {
     this.skin = skin
@@ -112,6 +125,8 @@ export class PetRenderer {
     const ctx = canvas.getContext('2d', { alpha: true })
     if (!ctx) throw new Error('Canvas 2D context unavailable')
     this.ctx = ctx
+    this.lipSync = new LipSync('neutral')
+    this.bodySync = new BodySync(false)
   }
 
   // ── 资源与状态注入 ────────────────────────────────────────────
@@ -147,6 +162,12 @@ export class PetRenderer {
     }
     if (next.emotion) {
       this.pendingFallback = this.skin.actionForEmotion(next.emotion)
+      // 情绪变化时更新 LipSync 的默认嘴型
+      this.lipSync.setEmotion(next.emotion)
+    }
+    // reduceMotion 变化时同步给 BodySync
+    if (next.reduceMotion !== undefined) {
+      this.bodySync.setReduceMotion(next.reduceMotion)
     }
   }
 
@@ -157,6 +178,76 @@ export class PetRenderer {
       this.onActionComplete?.(done)
     })
   }
+
+  // ── 音频驱动接口 ────────────────────────────────────────────────
+
+  /**
+   * 从麦克风启动音频同步
+   * @param options 媒体约束
+   */
+  async startAudioFromMic(options?: MediaStreamConstraints): Promise<void> {
+    if (this.isAudioPlaying) await this.stopAudio()
+    this.audioAnalyzer = new AudioAnalyzer()
+    this.isAudioPlaying = true
+    await this.audioAnalyzer.startMicrophone(options)
+    this._bindAudioFrame()
+  }
+
+  /**
+   * 从一个 <audio> 元素启动音频同步（不自动播放，需调用方先 play()）
+   */
+  attachAudioElement(audioEl: HTMLAudioElement): void {
+    if (this.isAudioPlaying) void this.stopAudio()
+    this.audioAnalyzer = new AudioAnalyzer()
+    this.isAudioPlaying = true
+    this.audioAnalyzer.attachAudioElement(audioEl)
+    this._bindAudioFrame()
+  }
+
+  /** 停止音频同步，释放所有音频资源 */
+  async stopAudio(): Promise<void> {
+    if (!this.isAudioPlaying) return
+    this.isAudioPlaying = false
+    if (this.audioAnalyzer) {
+      await this.audioAnalyzer.stop()
+      this.audioAnalyzer = null
+    }
+    this.lipSync.reset()
+    this.bodySync.reset()
+  }
+
+  /** 获取当前音频分析器（供外部查询状态） */
+  getAudioAnalyzer(): AudioAnalyzer | null {
+    return this.audioAnalyzer
+  }
+
+  /** 是否正在音频同步模式 */
+  get isAudioSyncActive(): boolean {
+    return this.isAudioPlaying
+  }
+
+  /** 内部：绑定音频帧回调 */
+  private _bindAudioFrame(): void {
+    if (!this.audioAnalyzer) return
+    this.audioAnalyzer.setOnFrame((env: AudioEnvelope) => {
+      this._onAudioFrame(env)
+    })
+  }
+
+  /** 内部：每帧音频数据回调 */
+  private _onAudioFrame(env: AudioEnvelope): void {
+    // 更新口型
+    const lipResult = this.lipSync.update(env)
+    // 更新身体节奏（获取下一帧的 bounceVelocity）
+    const bodyResult = this.bodySync.update(env)
+    // 将结果暂存，在 renderFrame 中应用
+    this._lastLipResult = lipResult
+    this._lastBodyOffset = bodyResult.offset
+  }
+
+  /** 最近一帧的口型和身体偏移结果（在 renderFrame 中消费） */
+  private _lastLipResult: ReturnType<LipSync['update']> | null = null
+  private _lastBodyOffset: BodySyncOffset | null = null
 
   // ── 画布尺寸管理 ──────────────────────────────────────────────
 
@@ -279,12 +370,17 @@ export class PetRenderer {
 
     ctx.save()
     ctx.translate(center.x, center.y)
-    if (body.rotation !== 0) ctx.rotate(body.rotation)
-    if (body.scaleX !== 1 || body.scaleY !== 1) ctx.scale(body.scaleX, body.scaleY)
+    // 应用音频驱动的身体偏移
+    const bodyOffset = this._lastBodyOffset ?? { extraTranslateY: 0, extraScaleX: 0, extraScaleY: 0, extraRotation: 0, isBouncing: false }
+    if (bodyOffset.extraRotation !== 0) ctx.rotate(body.rotation + bodyOffset.extraRotation)
+    else if (body.rotation !== 0) ctx.rotate(body.rotation)
+    const sx = body.scaleX + bodyOffset.extraScaleX
+    const sy = body.scaleY + bodyOffset.extraScaleY
+    if (sx !== 1 || sy !== 1) ctx.scale(sx, sy)
     // 指针视差：主体随光标轻微位移（与背景/阴影形成纵深），reduceMotion 时关闭
     const parX = reduceMotion ? 0 : this.pointer.x * W * 0.018
     const parY = reduceMotion ? 0 : this.pointer.y * H * 0.012
-    ctx.translate(body.translateX * W + parX, body.translateY * H + parY)
+    ctx.translate(body.translateX * W + parX, body.translateY * H + parY + bodyOffset.extraTranslateY * H)
     ctx.translate(-center.x, -center.y)
 
     // L2 身体主体（照片或内置矢量宠物）
@@ -306,8 +402,8 @@ export class PetRenderer {
     // L5 化妆层：在表情之下，让妆容贴合皮毛而非盖住五官线条
     this.drawMakeup()
 
-    // L6 表情层（传入眨眼与眼神跟随）
-    this.drawExpression(openFactor, look)
+    // L6 表情层（传入眨眼与眼神跟随，音频驱动时覆盖嘴型）
+    this.drawExpression(openFactor, look, this._lastLipResult?.mouthStyle)
 
     // L3/L4 服装与配饰：绘制在表情之上，避免帽子被表情线条压住
     this.drawWearables()
@@ -487,7 +583,7 @@ export class PetRenderer {
     }
   }
 
-  private drawExpression(openFactor: number, look: { x: number; y: number }): void {
+  private drawExpression(openFactor: number, look: { x: number; y: number }, overrideMouth?: MouthStyle): void {
     const style = EXPRESSION_MAP[this.state.emotion]
     const face = this.px(this.anchors.headBox)
     const leftEye = this.pxPoint(this.anchors.leftEye)
@@ -501,7 +597,9 @@ export class PetRenderer {
     }
     drawBrows(this.ctx, leftEye, rightEye, style.browAngle, eyeSize)
     drawEyes(this.ctx, leftEye, rightEye, style.eye, eyeSize, openFactor, look)
-    drawMouth(this.ctx, mouth, style.mouth, eyeSize * 1.15)
+    // 音频驱动时优先使用 LipSync 计算的嘴型，否则使用情绪默认嘴型
+    const mouthStyle = overrideMouth ?? style.mouth
+    drawMouth(this.ctx, mouth, mouthStyle, eyeSize * 1.15)
 
     // 睡觉时绘制 Z 符号
     if (this.state.emotion === 'sleepy' && !this.state.reduceMotion) {

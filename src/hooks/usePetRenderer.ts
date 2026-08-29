@@ -127,6 +127,18 @@ export function usePetRenderer(canvasRef: React.RefObject<HTMLCanvasElement | nu
       setTapHandler: (fn: (x: number, y: number) => void) => {
         onTapRef.current = fn
       },
+      /** 从麦克风启动音频同步 */
+      startAudioFromMic: () => rendererRef.current?.startAudioFromMic(),
+      /** 停止音频同步 */
+      stopAudio: () => rendererRef.current?.stopAudio(),
+      /** 是否正在音频同步模式 */
+      isAudioSyncActive: () => rendererRef.current?.isAudioSyncActive ?? false,
+      /** 附着外部音频元素 */
+      attachAudioElement: (el: HTMLAudioElement) => rendererRef.current?.attachAudioElement(el),
+      /** 获取音频分析器状态 */
+      getAudioAnalyzer: () => rendererRef.current?.getAudioAnalyzer(),
+      /** 渲染器实例（供外部直接调用） */
+      getRenderer: () => rendererRef.current,
     }),
     [],
   )
