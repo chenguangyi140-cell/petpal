@@ -5,7 +5,6 @@ import {
   Box,
   Cloud,
   ImagePlus,
-  Layers,
   Loader2,
   Sparkles,
   Upload,
@@ -15,12 +14,6 @@ import {
 import type { SkinId, ThreeViewSet } from '@/types'
 import { usePetStore } from '@/store/petStore'
 import { compressImage } from '@/services/segmentation'
-import {
-  AIServiceError,
-  generateModel3d,
-  generateThreeViews,
-  pingBridge,
-} from '@/services/aiService'
 import {
   dataURLToBlob,
   generateViaForge,
@@ -33,8 +26,7 @@ import { SKIN_IDS, getSkin } from '@/skins/registry'
 
 type StudioMode = 'create' | 'edit'
 type Step = 'source' | 'method' | 'preview'
-type Method = 'ai' | 'cloud' | 'manual'
-type AiOutput = 'threeView' | 'model3d'
+type Method = 'cloud' | 'manual'
 
 interface StudioProps {
   mode: StudioMode
@@ -53,10 +45,8 @@ export function AIImageStudio({ mode, onClose }: StudioProps) {
   const [type, setType] = useState<SkinId>(existingSkin ?? 'pet')
   const [photo, setPhoto] = useState<string | null>(null)
 
-  const [method, setMethod] = useState<Method>('ai')
-  const [aiOutput, setAiOutput] = useState<AiOutput>('threeView')
+  const [method, setMethod] = useState<Method>('manual')
   const [generating, setGenerating] = useState(false)
-  const [aiOnline, setAiOnline] = useState<boolean | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [hunyuanInfo, setHunyuanInfo] = useState<{ webUrl: string; steps: string[]; fallbackNote: string } | null>(null)
   const [forgeProgress, setForgeProgress] = useState<ForgeProgress | null>(null)
@@ -77,36 +67,6 @@ export function AIImageStudio({ mode, onClose }: StudioProps) {
     const compressed = await compressImage(raw, 1024, 0.9)
     setPhoto(compressed)
   }, [])
-
-  const checkBridge = useCallback(async () => {
-    setAiOnline(await pingBridge())
-  }, [])
-
-  useEffect(() => {
-    if (method === 'ai') void checkBridge()
-  }, [method, checkBridge])
-
-  const runAi = useCallback(async () => {
-    if (!photo) return
-    setGenerating(true)
-    setError(null)
-    try {
-      if (aiOutput === 'threeView') {
-        const views = await generateThreeViews(photo, type)
-        setResultViews(views)
-        setResultGlb(null)
-      } else {
-        const blob = await generateModel3d(photo, type)
-        setResultGlb(blob)
-        setResultViews(null)
-      }
-      setStep('preview')
-    } catch (e) {
-      setError(e instanceof AIServiceError ? e.message : '生成失败，请重试。')
-    } finally {
-      setGenerating(false)
-    }
-  }, [photo, aiOutput, type])
 
   // 云端生成：Forge（自动）
   const onRunCloudForge = useCallback(async () => {
@@ -207,13 +167,9 @@ export function AIImageStudio({ mode, onClose }: StudioProps) {
             <MethodStep
               method={method}
               setMethod={setMethod}
-              aiOutput={aiOutput}
-              setAiOutput={setAiOutput}
-              aiOnline={aiOnline}
               generating={generating}
               error={error}
               photo={photo}
-              onRunAi={runAi}
               onRunCloudForge={onRunCloudForge}
               onRunCloudHunyuan={onRunCloudHunyuan}
               hunyuanInfo={hunyuanInfo}
@@ -353,14 +309,10 @@ function SourceStep({
 function MethodStep({
   method,
   setMethod,
-  aiOutput,
-  setAiOutput,
-  aiOnline,
   generating,
   error,
   photo,
   hunyuanInfo,
-  onRunAi,
   onRunCloudForge,
   onRunCloudHunyuan,
   manFront,
@@ -382,14 +334,10 @@ function MethodStep({
 }: {
   method: Method
   setMethod: (m: Method) => void
-  aiOutput: AiOutput
-  setAiOutput: (o: AiOutput) => void
-  aiOnline: boolean | null
   generating: boolean
   error: string | null
   photo: string | null
   hunyuanInfo: { webUrl: string; steps: string[]; fallbackNote: string } | null
-  onRunAi: () => void
   onRunCloudForge: () => void
   onRunCloudHunyuan: () => void
   manFront: string | null
@@ -413,60 +361,8 @@ function MethodStep({
     <div className="flex flex-col">
       <h3 className="font-heading text-xl text-primary">选择生成方式</h3>
       <p className="mt-1 text-sm text-ink-muted">
-        有 GPU 走本机 AI；没有 GPU 可直接用云端免费生成，照片经浏览器直连云端。
+        手机端无需电脑：可直接用云端生成，或上传已有的三视图 / GLB 模型。
       </p>
-
-      {/* AI 自动 */}
-      <button
-        onClick={() => setMethod('ai')}
-        className={`clay-press mt-5 rounded-[var(--radius-clay)] border-2 p-4 text-left transition-all ${
-          method === 'ai' ? 'border-candy bg-candy-soft' : 'border-line bg-surface'
-        }`}
-      >
-        <div className="flex items-center gap-2 font-bold text-ink">
-          <Sparkles size={18} className="text-pink-500" /> AI 自动生成（本机 ComfyUI）
-        </div>
-        <p className="mt-1 text-xs text-ink-muted">
-          上传 1 张照片，本机 AI 自动产出三视图或立体模型，照片不出本机。
-        </p>
-        {method === 'ai' && (
-          <div className="mt-3">
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                onClick={() => setAiOutput('threeView')}
-                className={`clay-press rounded-[10px] border py-2 text-xs font-bold ${
-                  aiOutput === 'threeView' ? 'border-candy bg-surface text-pink-600' : 'border-line text-ink-muted'
-                }`}
-              >
-                <Layers size={14} className="mr-1 inline" /> 三视图转盘
-              </button>
-              <button
-                onClick={() => setAiOutput('model3d')}
-                className={`clay-press rounded-[10px] border py-2 text-xs font-bold ${
-                  aiOutput === 'model3d' ? 'border-candy bg-surface text-pink-600' : 'border-line text-ink-muted'
-                }`}
-              >
-                <Box size={14} className="mr-1 inline" /> 真·3D 模型
-              </button>
-            </div>
-
-            {aiOnline === false && (
-              <p className="mt-2 rounded-[10px] bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-700">
-                未检测到本机 AI 服务。请先运行 tools/bridge/server.mjs 并启动 ComfyUI，或在设置中填写地址。也可改用下方「手动上传」。
-              </p>
-            )}
-
-            <button
-              onClick={onRunAi}
-              disabled={!photo || generating}
-              className="clay-press mt-3 flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-clay-sm)] bg-candy py-2.5 font-bold text-white disabled:opacity-50"
-            >
-              {generating ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
-              {generating ? 'AI 生成中…（可能需数十秒）' : '开始生成'}
-            </button>
-          </div>
-        )}
-      </button>
 
       {/* 云端免费生成（无需 GPU） */}
       <CloudMethodCard
