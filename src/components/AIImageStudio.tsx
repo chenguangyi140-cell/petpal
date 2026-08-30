@@ -97,8 +97,14 @@ export function AIImageStudio({ mode, onClose }: StudioProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-3 backdrop-blur-sm">
       <div className="flex max-h-[92vh] w-full max-w-[520px] flex-col overflow-hidden rounded-[28px] bg-canvas shadow-[var(--shadow-clay)]">
-        {/* 头部 */}
+        {/* 头部：始终可见的返回入口，避免用户找不到退出 */}
         <div className="flex items-center justify-between border-b border-line px-5 py-3">
+          <button
+            onClick={onClose}
+            className="flex items-center gap-1 rounded-full px-2 py-1 text-sm font-bold text-ink-muted hover:bg-surface"
+          >
+            <ArrowLeft size={18} /> 返回
+          </button>
           <h2 className="font-heading text-lg text-primary">AI 形象工坊</h2>
           <button onClick={onClose} className="rounded-full p-1.5 text-ink-muted hover:bg-surface">
             <X size={20} />

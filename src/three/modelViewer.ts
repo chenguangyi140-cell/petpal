@@ -62,10 +62,137 @@ function makeEmojiTexture(emoji: string, THREE: any): any {
 function loadImageElement(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image()
+    img.crossOrigin = 'anonymous'
     img.onload = () => resolve(img)
     img.onerror = reject
     img.src = url
   })
+}
+
+/**
+ * 从图片 alpha 通道提取主体外轮廓（Moore-Neighbor 追踪 + 稀疏采样）。
+ * 用于把平面照片升级成有厚度的立体剪纸手办。
+ */
+function traceAlphaContour(
+  img: HTMLImageElement,
+  threshold = 128,
+  targetPoints = 140,
+): { x: number; y: number }[] {
+  const canvas = document.createElement('canvas')
+  const w = 128
+  const h = Math.max(1, Math.round(w * (img.height / img.width)))
+  canvas.width = w
+  canvas.height = h
+  const ctx = canvas.getContext('2d')!
+  ctx.drawImage(img, 0, 0, w, h)
+  const data = ctx.getImageData(0, 0, w, h).data
+
+  // 找最上方第一个不透明像素作为起点
+  let sx = -1
+  let sy = -1
+  outer: for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (data[(y * w + x) * 4 + 3]! > threshold) {
+        sx = x
+        sy = y
+        break outer
+      }
+    }
+  }
+  if (sx === -1) return []
+
+  const dirs: Array<[number, number]> = [
+    [1, 0],
+    [1, 1],
+    [0, 1],
+    [-1, 1],
+    [-1, 0],
+    [-1, -1],
+    [0, -1],
+    [1, -1],
+  ]
+
+  let x = sx
+  let y = sy
+  let dir = 6 // 向上，保持不透明区域在右侧
+  const path: { x: number; y: number }[] = [{ x, y }]
+
+  do {
+    let found = false
+    for (let i = 0; i < 8; i++) {
+      const d = (dir + i) % 8
+      const delta = dirs[d]!
+      const nx = x + delta[0]
+      const ny = y + delta[1]
+      if (nx >= 0 && nx < w && ny >= 0 && ny < h && data[(ny * w + nx) * 4 + 3]! > threshold) {
+        x = nx
+        y = ny
+        dir = (d + 5) % 8
+        path.push({ x, y })
+        found = true
+        break
+      }
+    }
+    if (!found) break
+    if (path.length > w * h * 2) break
+  } while (!(x === sx && y === sy))
+
+  if (path.length <= targetPoints) return path
+  const step = path.length / targetPoints
+  const sampled: { x: number; y: number }[] = []
+  for (let i = 0; i < targetPoints; i++) {
+    sampled.push(path[Math.min(path.length - 1, Math.round(i * step))]!)
+  }
+  return sampled
+}
+
+/** 采样图片不透明边缘的平均颜色，用作立体剪纸侧面/底座色调 */
+function sampleEdgeColor(img: HTMLImageElement): string {
+  const canvas = document.createElement('canvas')
+  canvas.width = 64
+  canvas.height = Math.max(1, Math.round(64 * (img.height / img.width)))
+  const ctx = canvas.getContext('2d')!
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+  const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data
+  let r = 0
+  let g = 0
+  let b = 0
+  let n = 0
+  const w = canvas.width
+  const h = canvas.height
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const i = (y * w + x) * 4
+      const alpha = data[i + 3]!
+      if (alpha < 80) continue
+      // 只保留边缘：至少有一个邻居透明
+      const neighbors = [
+        data[((y - 1) * w + x) * 4 + 3]!,
+        data[((y + 1) * w + x) * 4 + 3]!,
+        data[(y * w + (x - 1)) * 4 + 3]!,
+        data[(y * w + (x + 1)) * 4 + 3]!,
+      ]
+      if (neighbors.some((a) => a < 80)) {
+        r += data[i]!
+        g += data[i + 1]!
+        b += data[i + 2]!
+        n++
+      }
+    }
+  }
+  if (n === 0) {
+    // 退回到整体平均色
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i + 3]! > 80) {
+        r += data[i]!
+        g += data[i + 1]!
+        b += data[i + 2]!
+        n++
+      }
+    }
+  }
+  if (n === 0) return '#c49a78'
+  return `rgb(${Math.round(r / n)},${Math.round(g / n)},${Math.round(b / n)})`
 }
 
 /** 在照片画布上烘焙妆容（blush/eyeshadow/lipgloss 按脸部比例定位） */
@@ -193,6 +320,14 @@ export class ModelViewer {
     fill.position.set(-3, 1, -2)
     this.scene.add(fill)
 
+    // 轮廓光：从后侧打亮边缘，让剪纸体从背景中分离
+    const rim = new THREE.SpotLight(0xcceeff, 2.2)
+    rim.position.set(0, 2.2, -2.6)
+    rim.lookAt(0, 0.4, 0)
+    rim.angle = Math.PI / 4
+    rim.penumbra = 0.6
+    this.scene.add(rim)
+
     this.controls = new OrbitControls(this.camera, this.canvas)
     this.controls.enableDamping = true
     this.controls.dampingFactor = 0.08
@@ -238,14 +373,11 @@ export class ModelViewer {
   }
 
   /**
-   * 加载「照片 3D」：把一张（已去背的）照片渲染成可旋转的 3D 平面形象。
+   * 加载「照片 3D」：把一张已去背的照片升级成有厚度的立体剪纸手办。
    *
-   * 用于手机端无电脑用户：无需混元 3D / 桌面，本地 three.js 即可获得一个
-   * 会呼吸、会跳、会吃、会睡的「2.5D」宠物。后续导入 GLB 时由 load() 替换。
-   */
-  /**
-   * 加载「照片 3D」：把一张（已去背的）照片渲染成可旋转的 3D 平面形象。
-   * 化妆会烘焙进贴图（腮红/眼影/唇彩按脸部比例定位），让照片宠物也「化了妆」。
+   * 不再是一张薄纸片，而是根据 alpha 轮廓挤出体积：
+   * 正面是原照片贴图，侧面/背面是实色厚度，底部加底座，带轮廓光与软阴影。
+   * 手机端无电脑用户也能得到一个像模像样的 3D 形象。
    */
   async loadBillboard(imageUrl: string, makeup: MakeupItem[] = this.makeup): Promise<void> {
     if (!this.three) await this.init()
@@ -267,20 +399,113 @@ export class ModelViewer {
     const height = 1.6
     const width = Math.max(0.6, height * aspect)
 
-    const geo = new THREE.PlaneGeometry(width, height)
-    const mat = new THREE.MeshBasicMaterial({
+    const group = new THREE.Group()
+
+    // ── 立体剪纸主体：alpha 轮廓挤出厚度 ──
+    const contour = traceAlphaContour(img)
+    const edgeColor = sampleEdgeColor(img)
+    const extrudeDepth = 0.14
+    const bevel = 0.018
+
+    let bodyMesh: any
+    if (contour.length >= 8) {
+      const shape = new THREE.Shape()
+      const toX = (px: number) => (px / 128 - 0.5) * width
+      const toY = (py: number) => (0.5 - py / (128 * (h / w))) * height
+      const first = contour[0]!
+      shape.moveTo(toX(first.x), toY(first.y))
+      for (let i = 1; i < contour.length; i++) {
+        const p = contour[i]!
+        shape.lineTo(toX(p.x), toY(p.y))
+      }
+      shape.closePath()
+
+      const geo = new THREE.ExtrudeGeometry(shape, {
+        depth: extrudeDepth,
+        bevelEnabled: true,
+        bevelThickness: bevel,
+        bevelSize: bevel,
+        bevelSegments: 2,
+        steps: 1,
+      })
+      // 修正 UV 让侧面颜色均匀，正面由独立贴图覆盖
+      const mat = new THREE.MeshStandardMaterial({
+        color: edgeColor,
+        roughness: 0.65,
+        metalness: 0.05,
+      })
+      bodyMesh = new THREE.Mesh(geo, mat)
+      bodyMesh.position.z = -extrudeDepth / 2 - bevel
+    } else {
+      // 轮廓提取失败：退回到厚矩形板
+      const geo = new THREE.BoxGeometry(width, height, extrudeDepth)
+      const mat = new THREE.MeshStandardMaterial({
+        color: edgeColor,
+        roughness: 0.65,
+        metalness: 0.05,
+      })
+      bodyMesh = new THREE.Mesh(geo, mat)
+      bodyMesh.position.z = -extrudeDepth / 2
+    }
+    group.add(bodyMesh)
+
+    // ── 正面照片贴图（带透明通道，覆盖在挤出体前面）──
+    const frontGeo = new THREE.PlaneGeometry(width, height)
+    const frontMat = new THREE.MeshBasicMaterial({
       map: tex,
       transparent: true,
       side: THREE.DoubleSide,
+      depthWrite: false,
     })
-    const mesh = new THREE.Mesh(geo, mat)
-    // 轻微前倾，更像站立而非贴墙
-    mesh.rotation.x = -0.05
+    const frontMesh = new THREE.Mesh(frontGeo, frontMat)
+    frontMesh.position.z = extrudeDepth / 2 + bevel + 0.002
+    frontMesh.rotation.x = -0.04 // 微微前倾，更像站立
+    group.add(frontMesh)
+
+    // ── 背面：同色的实色背板，让旋转时不穿帮 ──
+    const backGeo = new THREE.PlaneGeometry(width, height)
+    const backMat = new THREE.MeshBasicMaterial({
+      color: edgeColor,
+      transparent: true,
+      opacity: 0.92,
+      side: THREE.DoubleSide,
+    })
+    const backMesh = new THREE.Mesh(backGeo, backMat)
+    backMesh.position.z = -extrudeDepth / 2 - bevel - 0.002
+    backMesh.rotation.y = Math.PI
+    group.add(backMesh)
+
+    // ── 底座：让形象站在一个平台上，更像手办 ──
+    const pedW = width * 0.85
+    const pedH = 0.14
+    const pedestalGeo = new THREE.CylinderGeometry(pedW * 0.55, pedW * 0.62, pedH, 32)
+    const pedestalMat = new THREE.MeshStandardMaterial({
+      color: '#f3e9dd',
+      roughness: 0.5,
+      metalness: 0.02,
+    })
+    const pedestal = new THREE.Mesh(pedestalGeo, pedestalMat)
+    pedestal.position.y = -height / 2 - pedH / 2 + 0.02
+    pedestal.position.z = 0
+    group.add(pedestal)
+
+    // 地面投影（扁平黑色圆盘）
+    const shadowGeo = new THREE.CircleGeometry(pedW * 0.72, 32)
+    const shadowMat = new THREE.MeshBasicMaterial({
+      color: 0x000000,
+      transparent: true,
+      opacity: 0.18,
+    })
+    const shadow = new THREE.Mesh(shadowGeo, shadowMat)
+    shadow.rotation.x = -Math.PI / 2
+    shadow.position.y = -height / 2 - pedH - 0.01
+    group.add(shadow)
+
+    // 整体居中
+    group.position.y = 0.4
 
     if (this.modelGroup) this.scene.remove(this.modelGroup)
-    this.modelGroup = new THREE.Group()
-    this.modelGroup.add(mesh)
-    this.modelGroup.position.y = 0.4
+    this.modelGroup = group
     this.scene.add(this.modelGroup)
     this.mode = 'billboard'
     this.billboardSrc = imageUrl

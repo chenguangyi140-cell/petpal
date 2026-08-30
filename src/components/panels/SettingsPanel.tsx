@@ -13,7 +13,6 @@ import {
 import { useSettingsStore } from '@/store/settingsStore'
 import { usePetStore, computeBondLevel } from '@/store/petStore'
 import { useLicenseStore } from '@/store/licenseStore'
-import { useAiStore } from '@/store/aiStore'
 import { getSkin } from '@/skins/registry'
 import { AIImageStudio } from '@/components/AIImageStudio'
 import { chatWithLLM } from '@/services/llm'
@@ -70,8 +69,6 @@ export function SettingsPanel() {
     }
   }
 
-  const aiEndpoint = useAiStore((s) => s.endpoint)
-  const setAiEndpoint = useAiStore((s) => s.setEndpoint)
   const modelModeLabel =
     profile?.modelMode === 'model3d' ? '真·3D 模型' : profile?.modelMode === 'threeView' ? '三视图转盘' : '经典平面照片'
 
@@ -227,26 +224,16 @@ export function SettingsPanel() {
           <p>
             当前形象模式：<span className="font-bold text-ink">{modelModeLabel}</span>
           </p>
-          <p className="mt-0.5">用本机 AI（ComfyUI）从一张照片生成三视图或立体模型，照片不出设备。</p>
+          <p className="mt-0.5">
+            上传一张照片，PetPal 会本地抠图并自动生成有厚度的立体 3D 形象（照片不出设备）。想要更高精度可走腾讯混元 3D 下载 GLB 导入。
+          </p>
         </div>
         <button
           onClick={() => setShowStudio(true)}
           className="clay-press mt-2 flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-clay-sm)] bg-gradient-to-r from-fuchsia-500 to-pink-500 py-2.5 text-sm font-bold text-white"
         >
-          <Sparkles size={15} /> 用 AI 重新生成形象
+          <Sparkles size={15} /> 重新生成形象
         </button>
-
-        <Field label="本机 AI 桥接地址">
-          <input
-            value={aiEndpoint}
-            onChange={(e) => setAiEndpoint(e.target.value)}
-            className="input-sm"
-            placeholder="http://localhost:8787"
-          />
-        </Field>
-        <p className="mt-1 text-[10px] text-ink-muted">
-          运行 tools/bridge/server.mjs 后此处填其地址；留空默认 http://localhost:8787。
-        </p>
       </Section>
 
       {/* 会员 */}
