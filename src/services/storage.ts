@@ -33,6 +33,8 @@ export const ASSET_KEYS = {
   threeViews: 'pet.threeViews',
   /** 本机生成的 3D 模型（GLB Blob，二进制资产） */
   model3d: 'pet.model3d',
+  /** 即梦生成的宠物短片（视频 Blob，二进制资产，由 modelMode==='video' 引用） */
+  petVideo: 'pet.petVideo',
 } as const
 
 /** 保存二进制资产（如 GLB 模型），通过 IndexedDB 避免 localStorage 配额问题 */

@@ -70,7 +70,13 @@ export function SettingsPanel() {
   }
 
   const modelModeLabel =
-    profile?.modelMode === 'model3d' ? '真·3D 模型' : profile?.modelMode === 'threeView' ? '三视图转盘' : '经典平面照片'
+    profile?.modelMode === 'model3d'
+      ? '真·3D 模型'
+      : profile?.modelMode === 'threeView'
+        ? '三视图转盘'
+        : profile?.modelMode === 'video'
+          ? '即梦宠物短片'
+          : '经典平面照片'
 
   return (
     <div className="space-y-4">

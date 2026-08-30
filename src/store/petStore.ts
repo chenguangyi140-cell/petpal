@@ -56,6 +56,8 @@ interface PetState {
   hydrated: boolean
   /** 3D 模型（GLB）的运行时对象 URL，仅内存态、不持久化；由 hydrate 从 IndexedDB 水合 */
   model3dUrl: string | null
+  /** 宠物短片（视频）的运行时对象 URL，仅内存态、不持久化；由 hydrate 从 IndexedDB 水合 */
+  petVideoUrl: string | null
 }
 
 interface PetActions {
@@ -68,6 +70,8 @@ interface PetActions {
   setThreeViews: (views: ThreeViewSet) => Promise<void>
   /** 写入 3D 模型（GLB Blob）并生成运行时对象 URL；传 null 清除 */
   setModel3d: (blob: Blob | null) => Promise<void>
+  /** 写入即梦生成的宠物短片（视频 Blob）并生成运行时对象 URL；传 null 清除并回到平面 */
+  setPetVideo: (blob: Blob | null, name?: string | null) => Promise<void>
   /** 切换形象渲染模式 */
   setModelMode: (mode: ModelMode) => void
   renamePet: (name: string) => void
@@ -110,6 +114,8 @@ const createInitialProfile = (
   modelMode: 'flat',
   threeViews: null,
   hasModel3d: false,
+  hasPetVideo: false,
+  petVideoName: null,
   createdAt: Date.now(),
   updatedAt: Date.now(),
 })
@@ -127,6 +133,7 @@ const initialState: PetState = {
   lastTickAt: Date.now(),
   hydrated: false,
   model3dUrl: null,
+  petVideoUrl: null,
 }
 
 export const usePetStore = create<PetStore>()(
@@ -136,11 +143,12 @@ export const usePetStore = create<PetStore>()(
 
       /** 从 IndexedDB 恢复照片资产（dataURL 过大，不进 localStorage） */
       hydrate: async () => {
-        const [cutout, original, threeViewsRaw, model3dBlob] = await Promise.all([
+        const [cutout, original, threeViewsRaw, model3dBlob, petVideoBlob] = await Promise.all([
           loadAsset(ASSET_KEYS.cutout),
           loadAsset(ASSET_KEYS.original),
           loadAsset(ASSET_KEYS.threeViews),
           loadAssetBlob(ASSET_KEYS.model3d),
+          loadAssetBlob(ASSET_KEYS.petVideo),
         ])
         // 三视图：存的是序列化 JSON，需安全解析
         let threeViews: ThreeViewSet | null = null
@@ -153,10 +161,12 @@ export const usePetStore = create<PetStore>()(
           }
         }
         const model3dUrl = model3dBlob ? URL.createObjectURL(model3dBlob) : null
+        const petVideoUrl = petVideoBlob ? URL.createObjectURL(petVideoBlob) : null
 
         set((s) => ({
           hydrated: true,
           model3dUrl,
+          petVideoUrl,
           profile: s.profile
             ? {
                 ...s.profile,
@@ -164,6 +174,7 @@ export const usePetStore = create<PetStore>()(
                 originalDataUrl: original,
                 threeViews,
                 hasModel3d: s.profile.hasModel3d || Boolean(model3dUrl),
+                hasPetVideo: s.profile.hasPetVideo || Boolean(petVideoUrl),
               }
             : null,
         }))
@@ -254,11 +265,45 @@ export const usePetStore = create<PetStore>()(
           s.profile ? { profile: { ...s.profile, modelMode: mode, updatedAt: Date.now() } } : s,
         ),
 
+      setPetVideo: async (blob, name = null) => {
+        // 旧资产先清理，避免 Blob URL 泄漏
+        if (get().petVideoUrl) URL.revokeObjectURL(get().petVideoUrl as string)
+        if (!blob) {
+          await deleteAssetBlob(ASSET_KEYS.petVideo)
+          set((s) => ({
+            petVideoUrl: null,
+            profile: s.profile
+              ? { ...s.profile, hasPetVideo: false, petVideoName: null, modelMode: 'flat', updatedAt: Date.now() }
+              : null,
+          }))
+          return
+        }
+        await saveAssetBlob(ASSET_KEYS.petVideo, blob)
+        const url = URL.createObjectURL(blob)
+        set((s) => ({
+          petVideoUrl: url,
+          profile: s.profile
+            ? {
+                ...s.profile,
+                hasPetVideo: true,
+                petVideoName: name,
+                // 短片作为动态形象：进入视频舞台
+                modelMode: 'video',
+                updatedAt: Date.now(),
+              }
+            : null,
+        }))
+      },
+
       renamePet: (name) =>
         set((s) => (s.profile ? { profile: { ...s.profile, name, updatedAt: Date.now() } } : s)),
 
       removePet: async () => {
-        await Promise.all([deleteAsset(ASSET_KEYS.cutout), deleteAsset(ASSET_KEYS.original)])
+        await Promise.all([
+          deleteAsset(ASSET_KEYS.cutout),
+          deleteAsset(ASSET_KEYS.original),
+          deleteAssetBlob(ASSET_KEYS.petVideo),
+        ])
         set({ ...initialState, hydrated: true })
       },
 

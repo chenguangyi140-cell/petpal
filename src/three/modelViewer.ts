@@ -195,6 +195,68 @@ function sampleEdgeColor(img: HTMLImageElement): string {
   return `rgb(${Math.round(r / n)},${Math.round(g / n)},${Math.round(b / n)})`
 }
 
+/**
+ * 从去背照片生成「高度图」：主体区域按亮度起伏（亮处更凸），
+ * 透明边缘平滑归零，用于让正面网格产生真实的体积起伏（非纸片）。
+ * 返回的画布同时保留原始 alpha，便于做 alphaTest 丢弃透明区。
+ */
+function buildHeightMap(img: HTMLImageElement): HTMLCanvasElement {
+  const w = img.width || 512
+  const h = img.height || 640
+  const canvas = document.createElement('canvas')
+  canvas.width = w
+  canvas.height = h
+  const ctx = canvas.getContext('2d')!
+  ctx.drawImage(img, 0, 0, w, h)
+  const src = ctx.getImageData(0, 0, w, h).data
+  const out = ctx.createImageData(w, h)
+  for (let i = 0; i < src.length; i += 4) {
+    const a = src[i + 3]! / 255
+    let height = 0
+    if (a > 0.04) {
+      const r = src[i]!
+      const g = src[i + 1]!
+      const b = src[i + 2]!
+      const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+      const soft = Math.min(1, a * 2.5) // 透明边缘平滑归零，与挤出体边缘衔接
+      height = (0.42 + 0.58 * lum) * soft
+    }
+    const v = Math.round(height * 255)
+    out.data[i] = v
+    out.data[i + 1] = v
+    out.data[i + 2] = v
+    out.data[i + 3] = src[i + 3]!
+  }
+  ctx.putImageData(out, 0, 0)
+  return canvas
+}
+
+/**
+ * 给挤出体/盒体几何加「沿厚度方向的明暗顶点色」：
+ * 前表面亮、后表面暗，伪造环境光遮蔽（AO）与体积感，避免侧边像纯色塑料片。
+ */
+function applyThicknessAO(THREE: any, geo: any, hex: string): void {
+  const pos = geo.attributes.position
+  let zMin = Infinity
+  let zMax = -Infinity
+  for (let i = 0; i < pos.count; i++) {
+    const z = pos.getZ(i)
+    if (z < zMin) zMin = z
+    if (z > zMax) zMax = z
+  }
+  const ec = new THREE.Color(hex)
+  const range = zMax - zMin || 1
+  const colors = new Float32Array(pos.count * 3)
+  for (let i = 0; i < pos.count; i++) {
+    const zn = (pos.getZ(i) - zMin) / range
+    const shade = 0.5 + 0.5 * zn // 前=1 亮，后=0 暗
+    colors[i * 3] = ec.r * shade
+    colors[i * 3 + 1] = ec.g * shade
+    colors[i * 3 + 2] = ec.b * shade
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3))
+}
+
 /** 在照片画布上烘焙妆容（blush/eyeshadow/lipgloss 按脸部比例定位） */
 function bakeMakeup(ctx: CanvasRenderingContext2D, item: MakeupItem, w: number, h: number): void {
   // 主体已裁剪居中，脸部中心约在照片上方 ~42% 处
@@ -310,18 +372,44 @@ export class ModelViewer {
     this.renderer.setSize(w, h, false)
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
 
+    // 程序化柔和环境的反射，让材质有体积与质感（不依赖任何外部资源）
+    try {
+      const envCanvas = document.createElement('canvas')
+      envCanvas.width = 32
+      envCanvas.height = 128
+      const ectx = envCanvas.getContext('2d')!
+      const grad = ectx.createLinearGradient(0, 0, 0, 128)
+      grad.addColorStop(0, '#ffffff')
+      grad.addColorStop(0.45, '#e3ebf5')
+      grad.addColorStop(0.55, '#cfd6e0')
+      grad.addColorStop(1, '#7d6f5c')
+      ectx.fillStyle = grad
+      ectx.fillRect(0, 0, 32, 128)
+      const envTex = new THREE.CanvasTexture(envCanvas)
+      envTex.mapping = THREE.EquirectangularReflectionMapping
+      const pmrem = new THREE.PMREMGenerator(this.renderer)
+      pmrem.compileEquirectangularShader()
+      const envRT = pmrem.fromEquirectangular(envTex)
+      this.scene.environment = envRT.texture
+      ;(this.scene as any).environmentIntensity = 0.55
+      envTex.dispose()
+      pmrem.dispose()
+    } catch (e) {
+      // 环境贴图生成失败时退回默认光照，不影响主流程
+    }
+
     // 灯光：半球光给与环境色，方向光制造体积感
-    const hemi = new THREE.HemisphereLight(0xffffff, 0x9b7b53, 1.1)
+    const hemi = new THREE.HemisphereLight(0xffffff, 0x9b7b53, 1.0)
     this.scene.add(hemi)
-    const dir = new THREE.DirectionalLight(0xffffff, 1.4)
+    const dir = new THREE.DirectionalLight(0xffffff, 1.1)
     dir.position.set(2, 4, 3)
     this.scene.add(dir)
-    const fill = new THREE.DirectionalLight(0xffe6c0, 0.5)
+    const fill = new THREE.DirectionalLight(0xffe6c0, 0.45)
     fill.position.set(-3, 1, -2)
     this.scene.add(fill)
 
-    // 轮廓光：从后侧打亮边缘，让剪纸体从背景中分离
-    const rim = new THREE.SpotLight(0xcceeff, 2.2)
+    // 轮廓光：从后侧打亮边缘，让浮雕体从背景中分离
+    const rim = new THREE.SpotLight(0xcceeff, 1.5)
     rim.position.set(0, 2.2, -2.6)
     rim.lookAt(0, 0.4, 0)
     rim.angle = Math.PI / 4
@@ -401,11 +489,17 @@ export class ModelViewer {
 
     const group = new THREE.Group()
 
-    // ── 立体剪纸主体：alpha 轮廓挤出厚度 ──
+    // ── 体积感核心：正面按亮度/轮廓做 CPU 位移，形成真实起伏的浮雕 ──
     const contour = traceAlphaContour(img)
     const edgeColor = sampleEdgeColor(img)
-    const extrudeDepth = 0.14
-    const bevel = 0.018
+    const extrudeDepth = 0.2
+    const bevel = 0.03
+    const frontZ = extrudeDepth / 2 + bevel + 0.002
+
+    // 高度图（含透明 alpha 以做 discard）
+    const heightCanvas = buildHeightMap(img)
+    const hctx = heightCanvas.getContext('2d')!
+    const hdata = hctx.getImageData(0, 0, heightCanvas.width, heightCanvas.height).data
 
     let bodyMesh: any
     if (contour.length >= 8) {
@@ -419,55 +513,75 @@ export class ModelViewer {
         shape.lineTo(toX(p.x), toY(p.y))
       }
       shape.closePath()
-
       const geo = new THREE.ExtrudeGeometry(shape, {
         depth: extrudeDepth,
         bevelEnabled: true,
         bevelThickness: bevel,
         bevelSize: bevel,
-        bevelSegments: 2,
+        bevelSegments: 3,
         steps: 1,
       })
-      // 修正 UV 让侧面颜色均匀，正面由独立贴图覆盖
+      applyThicknessAO(THREE, geo, edgeColor)
       const mat = new THREE.MeshStandardMaterial({
-        color: edgeColor,
-        roughness: 0.65,
-        metalness: 0.05,
+        vertexColors: true,
+        roughness: 0.7,
+        metalness: 0.04,
       })
       bodyMesh = new THREE.Mesh(geo, mat)
       bodyMesh.position.z = -extrudeDepth / 2 - bevel
     } else {
-      // 轮廓提取失败：退回到厚矩形板
+      // 轮廓提取失败：退回到厚矩形板（仍带厚度明暗渐变）
       const geo = new THREE.BoxGeometry(width, height, extrudeDepth)
+      applyThicknessAO(THREE, geo, edgeColor)
       const mat = new THREE.MeshStandardMaterial({
-        color: edgeColor,
-        roughness: 0.65,
-        metalness: 0.05,
+        vertexColors: true,
+        roughness: 0.7,
+        metalness: 0.04,
       })
       bodyMesh = new THREE.Mesh(geo, mat)
       bodyMesh.position.z = -extrudeDepth / 2
     }
     group.add(bodyMesh)
 
-    // ── 正面照片贴图（带透明通道，覆盖在挤出体前面）──
-    const frontGeo = new THREE.PlaneGeometry(width, height)
-    const frontMat = new THREE.MeshBasicMaterial({
+    // ── 正面：细分网格 + CPU 亮度位移，做出有起伏的立体浮雕（非纸片）──
+    const segX = Math.min(220, Math.max(80, Math.round(width * 150)))
+    const segY = Math.min(260, Math.max(100, Math.round(height * 150)))
+    const frontGeo = new THREE.PlaneGeometry(width, height, segX, segY)
+    const fpos = frontGeo.attributes.position!
+    const fuv = frontGeo.attributes.uv!
+    const hw = heightCanvas.width
+    const hh = heightCanvas.height
+    for (let i = 0; i < fpos.count; i++) {
+      const u = fuv.getX(i)
+      const v = fuv.getY(i)
+      const px = Math.min(hw - 1, Math.max(0, Math.floor(u * (hw - 1))))
+      const py = Math.min(hh - 1, Math.max(0, Math.floor((1 - v) * (hh - 1))))
+      const li = (py * hw + px) * 4
+      const a = hdata[li + 3]! / 255
+      const hv = a > 0.04 ? hdata[li]! / 255 : 0
+      fpos.setZ(i, hv * 0.17)
+    }
+    fpos.needsUpdate = true
+    frontGeo.computeVertexNormals()
+    const frontMat = new THREE.MeshStandardMaterial({
       map: tex,
       transparent: true,
+      alphaTest: 0.5,
       side: THREE.DoubleSide,
-      depthWrite: false,
+      roughness: 0.7,
+      metalness: 0.0,
     })
     const frontMesh = new THREE.Mesh(frontGeo, frontMat)
-    frontMesh.position.z = extrudeDepth / 2 + bevel + 0.002
-    frontMesh.rotation.x = -0.04 // 微微前倾，更像站立
+    frontMesh.position.z = frontZ
+    frontMesh.rotation.x = -0.05 // 微微前倾，更像站立
     group.add(frontMesh)
 
-    // ── 背面：同色的实色背板，让旋转时不穿帮 ──
+    // ── 背面：同色调实色，受光一致，旋转时不穿帮 ──
     const backGeo = new THREE.PlaneGeometry(width, height)
-    const backMat = new THREE.MeshBasicMaterial({
+    const backMat = new THREE.MeshStandardMaterial({
       color: edgeColor,
-      transparent: true,
-      opacity: 0.92,
+      roughness: 0.75,
+      metalness: 0.03,
       side: THREE.DoubleSide,
     })
     const backMesh = new THREE.Mesh(backGeo, backMat)
@@ -476,12 +590,12 @@ export class ModelViewer {
     group.add(backMesh)
 
     // ── 底座：让形象站在一个平台上，更像手办 ──
-    const pedW = width * 0.85
-    const pedH = 0.14
-    const pedestalGeo = new THREE.CylinderGeometry(pedW * 0.55, pedW * 0.62, pedH, 32)
+    const pedW = width * 0.9
+    const pedH = 0.16
+    const pedestalGeo = new THREE.CylinderGeometry(pedW * 0.55, pedW * 0.64, pedH, 40)
     const pedestalMat = new THREE.MeshStandardMaterial({
-      color: '#f3e9dd',
-      roughness: 0.5,
+      color: '#efe6d8',
+      roughness: 0.45,
       metalness: 0.02,
     })
     const pedestal = new THREE.Mesh(pedestalGeo, pedestalMat)
@@ -490,11 +604,11 @@ export class ModelViewer {
     group.add(pedestal)
 
     // 地面投影（扁平黑色圆盘）
-    const shadowGeo = new THREE.CircleGeometry(pedW * 0.72, 32)
+    const shadowGeo = new THREE.CircleGeometry(pedW * 0.78, 40)
     const shadowMat = new THREE.MeshBasicMaterial({
       color: 0x000000,
       transparent: true,
-      opacity: 0.18,
+      opacity: 0.16,
     })
     const shadow = new THREE.Mesh(shadowGeo, shadowMat)
     shadow.rotation.x = -Math.PI / 2

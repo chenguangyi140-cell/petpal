@@ -169,8 +169,9 @@ export interface PetAnchors {
  * - flat：经典平面去背照片（原方案）
  * - threeView：由前/侧/后三视图拼出的可旋转转盘（2.5D 实拍感）
  * - model3d：本机 ComfyUI 生成的真·3D 模型（GLB），可自由拖拽旋转
+ * - video：即梦等生成的宠物短片（会动/会说的视频），作为动态形象
  */
-export type ModelMode = 'flat' | 'threeView' | 'model3d'
+export type ModelMode = 'flat' | 'threeView' | 'model3d' | 'video'
 
 /**
  * 三视图图像集合（dataURL，含 alpha 通道）
@@ -208,6 +209,10 @@ export interface PetProfile {
   threeViews: ThreeViewSet | null
   /** 是否存在本机生成的 3D 模型资产（modelMode==='model3d' 时有效，GLB 存于 IndexedDB） */
   hasModel3d: boolean
+  /** 是否已设置即梦生成的宠物短片（modelMode==='video' 时有效，视频 Blob 存于 IndexedDB） */
+  hasPetVideo: boolean
+  /** 短片文件名（仅用于展示，如「我家咪咪.mp4」）；无则为 null */
+  petVideoName: string | null
   createdAt: number
   updatedAt: number
 }

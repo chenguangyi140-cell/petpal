@@ -14,6 +14,7 @@
 - P2 已完成：无 Key 时本地兜底对话按四维心情动态生成 + 设置页 LLM 预设/连通性测试。
 - P3a 已完成：手机端单图 3D（photo billboard）。`ModelViewer.loadBillboard` 把去背照片用 three.js 渲染成可旋转、会呼吸/跳/吃/睡的 3D 平面形象，全程本地、不依赖混元、无需电脑；手动上传三视图完成即切 3D 舞台，正面照作 billboard 源。commit `a19bf8b`。
 - P3b 已完成：换装/化妆作用于 3D 模型。`ModelViewer` 把 `equipped` 的 emoji 配饰渲染为朝向相机的精灵挂到头/颈/身锚点（GLB 与照片 3D 都生效）；`makeup` 在照片 3D 上烘焙进贴图（腮红/眼影/唇彩按脸部比例），GLB 上用整体轻微染色近似。`Model3DStage` 订阅 `equipped`/`wearableOffsets`/`makeup` 实时转发。commit `765cd10`。
+- 用户反馈照片 3D 太像平面纸片、AI 形象工坊缺返回键：已升级为立体剪纸手办效果——从 alpha 轮廓追踪并 `ExtrudeGeometry` 挤出厚度，正面保留照片贴图，侧面/背面用采样边缘色，加圆柱底座、地面投影、轮廓光；`AIImageStudio` 顶部新增「返回」文字按钮；`SettingsPanel` 清理已废弃的 ComfyUI/本机桥接文案。commit `0e3ea50`。
 - P4 待做：动画/表情/主动关怀打磨。
 
 ## 协作偏好（用户明确）

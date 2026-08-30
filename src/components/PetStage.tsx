@@ -9,6 +9,7 @@ import { getSkin } from '@/skins/registry'
 import { getMoodAlerts } from '@/engine/emotion'
 import { speak } from '@/services/speak'
 import { Model3DStage } from '@/components/Model3DStage'
+import { PetVideoStage } from '@/components/PetVideoStage'
 
 /** 心情维度展示配置 */
 const MOOD_META: ReadonlyArray<{
@@ -38,6 +39,7 @@ export function PetStage() {
   const skinId = usePetStore((s) => s.profile?.skin)
   const modelMode = usePetStore((s) => s.profile?.modelMode)
   const threeViews = usePetStore((s) => s.profile?.threeViews)
+  const petVideoUrl = usePetStore((s) => s.petVideoUrl)
   const skin = getSkin(skinId)
 
   const renderer = usePetRenderer(canvasRef)
@@ -151,7 +153,9 @@ export function PetStage() {
       )}
 
       {/* 舞台：按形象渲染模式切换 */}
-      {modelMode === 'model3d' || (modelMode === 'threeView' && threeViews) ? (
+      {modelMode === 'video' && petVideoUrl ? (
+        <PetVideoStage />
+      ) : modelMode === 'model3d' || (modelMode === 'threeView' && threeViews) ? (
         <Model3DStage />
       ) : (
         <section className="relative flex-1 overflow-hidden bg-gradient-to-b from-sky-100 via-sky-50 to-amber-50">
