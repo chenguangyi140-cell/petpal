@@ -485,23 +485,48 @@ function MiniUpload({
   onChange: (v: string | null) => void
 }) {
   const ref = useRef<HTMLInputElement>(null)
+  const [busy, setBusy] = useState(false)
+
+  const handleFile = async (file: File) => {
+    setBusy(true)
+    try {
+      const raw = await fileToDataUrl(file)
+      // 自动缩放：限制长边 1024、JPEG 0.85，避免大图导致上传/IndexedDB 失败
+      const compressed = await compressImage(raw, 1024, 0.85)
+      onChange(compressed)
+    } catch (err) {
+      console.error('图片处理失败:', err)
+      onChange(null)
+    } finally {
+      setBusy(false)
+      if (ref.current) ref.current.value = ''
+    }
+  }
+
   return (
     <button
       onClick={() => ref.current?.click()}
-      className="flex flex-col items-center gap-1 rounded-[10px] border-2 border-line bg-surface p-1"
+      disabled={busy}
+      className="flex flex-col items-center gap-1 rounded-[10px] border-2 border-line bg-surface p-1 disabled:opacity-60"
     >
       <div className="flex h-16 w-full items-center justify-center overflow-hidden rounded-[8px] bg-canvas">
-        {value ? <img src={value} alt={label} className="h-full w-full object-contain" /> : <ImagePlus size={18} className="text-ink-muted" />}
+        {value ? (
+          <img src={value} alt={label} className="h-full w-full object-contain" />
+        ) : busy ? (
+          <Loader2 size={18} className="animate-spin text-ink-muted" />
+        ) : (
+          <ImagePlus size={18} className="text-ink-muted" />
+        )}
       </div>
-      <span className="text-[10px] font-bold text-ink-muted">{label}</span>
+      <span className="text-[10px] font-bold text-ink-muted">{busy ? '处理中…' : label}</span>
       <input
         ref={ref}
         type="file"
         accept="image/*"
         hidden
-        onChange={async (e) => {
+        onChange={(e) => {
           const f = e.target.files?.[0]
-          if (f) onChange(await fileToDataUrl(f))
+          if (f) void handleFile(f)
         }}
       />
     </button>
