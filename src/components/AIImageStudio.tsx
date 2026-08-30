@@ -25,6 +25,7 @@ import {
   dataURLToBlob,
   generateViaForge,
   getHunyuan3DInfo,
+  type ForgeProgress,
 } from '@/services/cloudService'
 import { ThreeViewRenderer } from '@/engine/threeViewRenderer'
 import { ModelViewer } from '@/three/modelViewer'
@@ -58,6 +59,8 @@ export function AIImageStudio({ mode, onClose }: StudioProps) {
   const [aiOnline, setAiOnline] = useState<boolean | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [hunyuanInfo, setHunyuanInfo] = useState<{ webUrl: string; steps: string[]; fallbackNote: string } | null>(null)
+  const [forgeProgress, setForgeProgress] = useState<ForgeProgress | null>(null)
+  const [retryKey, setRetryKey] = useState(0) // 用于重置生成状态
 
   // 手动模式资产
   const [manFront, setManFront] = useState<string | null>(null)
@@ -110,12 +113,14 @@ export function AIImageStudio({ mode, onClose }: StudioProps) {
     if (!photo) return
     setGenerating(true)
     setError(null)
+    setForgeProgress({ status: 'queued', queuePosition: null, etaMs: null })
     try {
       const result = await generateViaForge(
         photo,
         type === 'pet'
           ? 'a cute cartoon pet character, full body, T-pose, white background, stylized 3D render'
           : 'a cute cartoon human character, full body, T-pose, white background, stylized 3D render',
+        (p) => setForgeProgress(p),
       )
       const blob = dataURLToBlob(result.glbDataUrl)
       setResultGlb(blob)
@@ -123,6 +128,7 @@ export function AIImageStudio({ mode, onClose }: StudioProps) {
       setStep('preview')
     } catch (e) {
       setError(e instanceof Error ? e.message : '云端生成失败，请重试。')
+      setForgeProgress(null)
     } finally {
       setGenerating(false)
     }
@@ -221,6 +227,13 @@ export function AIImageStudio({ mode, onClose }: StudioProps) {
               manGlb={manGlb}
               setManGlb={setManGlb}
               onUseManual={useManual}
+              forgeProgress={forgeProgress}
+              retryKey={retryKey}
+              setRetryKey={setRetryKey}
+              setError={setError}
+              setResultGlb={setResultGlb}
+              setResultViews={setResultViews}
+              setStep={setStep}
             />
           )}
 
@@ -359,6 +372,13 @@ function MethodStep({
   manGlb,
   setManGlb,
   onUseManual,
+  forgeProgress,
+  retryKey,
+  setRetryKey,
+  setError,
+  setResultGlb,
+  setResultViews,
+  setStep,
 }: {
   method: Method
   setMethod: (m: Method) => void
@@ -381,6 +401,13 @@ function MethodStep({
   manGlb: Blob | null
   setManGlb: (v: Blob | null) => void
   onUseManual: () => void
+  forgeProgress: ForgeProgress | null
+  retryKey: number
+  setRetryKey: (v: number) => void
+  setError: (v: string | null) => void
+  setResultGlb: (v: Blob | null) => void
+  setResultViews: (v: ThreeViewSet | null) => void
+  setStep: (v: Step) => void
 }) {
   return (
     <div className="flex flex-col">
@@ -443,13 +470,22 @@ function MethodStep({
 
       {/* 云端免费生成（无需 GPU） */}
       <CloudMethodCard
+        key={retryKey}
         method={method}
         setMethod={setMethod}
         generating={generating}
+        error={error}
+        onRetryForge={() => { setRetryKey(retryKey + 1); setError(null) }}
         photo={photo}
+        forgeProgress={forgeProgress}
         onRunCloudForge={onRunCloudForge}
         onRunCloudHunyuan={onRunCloudHunyuan}
         hunyuanInfo={hunyuanInfo}
+        onGlbImported={(blob) => {
+          setResultGlb(blob)
+          setResultViews(null)
+          setStep('preview')
+        }}
       />
 
       {/* 手动上传 */}
@@ -505,20 +541,43 @@ function CloudMethodCard({
   method,
   setMethod,
   generating,
+  error,
+  onRetryForge,
   photo,
+  forgeProgress,
   onRunCloudForge,
   onRunCloudHunyuan,
   hunyuanInfo,
+  onGlbImported,
 }: {
   method: Method
   setMethod: (m: Method) => void
   generating: boolean
+  error: string | null
+  onRetryForge: () => void
   photo: string | null
+  forgeProgress: ForgeProgress | null
   onRunCloudForge: () => void
   onRunCloudHunyuan: () => void
   hunyuanInfo: { webUrl: string; steps: string[]; fallbackNote: string } | null
+  onGlbImported: (blob: Blob) => void
 }) {
   const selected = method === 'cloud'
+
+  // 队列进度百分比估算（无 queuePosition 时走简单时间估算）
+  const progressPct = forgeProgress?.status === 'done' ? 100
+    : forgeProgress?.queuePosition && forgeProgress.queuePosition > 0
+      ? Math.min(90, Math.round(100 - forgeProgress.queuePosition * 10))
+      : forgeProgress?.status === 'processing' ? 60 : 20
+
+  const fmtETA = (ms: number | null) => {
+    if (ms == null) return null
+    const s = Math.max(1, Math.round(ms / 1000))
+    if (s < 60) return `~${s}秒`
+    if (s < 3600) return `~${Math.ceil(s / 60)}分钟`
+    return `~${Math.ceil(s / 3600)}小时`
+  }
+
   return (
     <div className="mt-3">
       <button
@@ -556,6 +615,30 @@ function CloudMethodCard({
             {!photo && (
               <p className="mt-1 text-[10px] font-semibold text-amber-600">请先在第一步上传照片。</p>
             )}
+
+            {/* 队列状态展示 */}
+            {forgeProgress && !generating && (
+              <div className="mt-3 space-y-2">
+                <div className="flex items-center justify-between text-[11px] font-semibold text-ink-muted">
+                  <span>
+                    {forgeProgress.status === 'queued' && `队列中 · 第 ${forgeProgress.queuePosition ?? '?'} 位`}
+                    {forgeProgress.status === 'processing' && '正在生成中…'}
+                    {forgeProgress.status === 'failed' && (forgeProgress.errorMessage ? `失败：${forgeProgress.errorMessage}` : '生成失败')}
+                  </span>
+                  {forgeProgress.etaMs != null && <span>{fmtETA(forgeProgress.etaMs)}</span>}
+                </div>
+                <div className="h-2 rounded-full bg-line overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-500 ${
+                      forgeProgress.status === 'failed' ? 'bg-rose-500'
+                      : forgeProgress.status === 'processing' ? 'bg-amber-500 animate-pulse'
+                      : 'bg-amber-400'
+                    }`}
+                    style={{ width: `${progressPct}%` }}
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Hunyuan3D 网页版 */}
@@ -569,34 +652,86 @@ function CloudMethodCard({
             <button
               onClick={onRunCloudHunyuan}
               disabled={generating}
-              className="clay-press mt-2 flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-clay-sm)] bg-sky-500 py-2.5 font-bold text-white"
+              className="clay-press mt-2 flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-clay-sm)] bg-sky-500 py-2.5 font-bold text-white disabled:opacity-50"
             >
               <ArrowRight size={16} /> 查看 Hunyuan3D 使用指引
             </button>
 
             {hunyuanInfo && (
-              <div className="mt-3 rounded-[10px] bg-sky-50 p-3">
-                <a
-                  href={hunyuanInfo.webUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-block break-all rounded-[8px] bg-sky-600 px-3 py-1.5 text-xs font-bold text-white"
-                >
-                  {hunyuanInfo.webUrl} ↗
-                </a>
-                <ol className="mt-2 space-y-1 text-[11px] text-ink">
-                  {hunyuanInfo.steps.map((s, i) => (
-                    <li key={i}>
-                      {i + 1}. {s}
-                    </li>
-                  ))}
-                </ol>
-                <p className="mt-2 text-[10px] text-ink-muted">{hunyuanInfo.fallbackNote}</p>
+              <div className="mt-3 space-y-3">
+                <div className="rounded-[10px] bg-sky-50 p-3">
+                  <a
+                    href={hunyuanInfo.webUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-block break-all rounded-[8px] bg-sky-600 px-3 py-1.5 text-xs font-bold text-white"
+                  >
+                    {hunyuanInfo.webUrl} ↗
+                  </a>
+                  <ol className="mt-2 space-y-1 text-[11px] text-ink">
+                    {hunyuanInfo.steps.map((s, i) => (
+                      <li key={i}>
+                        {i + 1}. {s}
+                      </li>
+                    ))}
+                  </ol>
+                  <p className="mt-2 text-[10px] text-ink-muted">{hunyuanInfo.fallbackNote}</p>
+                </div>
+                {/* 已下载 GLB 的快捷导入入口 */}
+                <GLBDirectImport onGlbLoaded={onGlbImported} />
               </div>
             )}
           </div>
+
+          {/* 错误重试区 */}
+          {error && (
+            <div className="rounded-[10px] border-2 border-rose-200 bg-rose-50 p-3 space-y-2">
+              <p className="text-xs font-semibold text-rose-700">{error}</p>
+              <div className="flex gap-2">
+                <button
+                  onClick={onRetryForge}
+                  className="flex-1 clay-press rounded-[8px] bg-rose-600 py-2 text-xs font-bold text-white"
+                >
+                  重试 Forge
+                </button>
+                <button
+                  onClick={() => { setMethod('cloud'); void onRunCloudHunyuan() }}
+                  className="flex-1 clay-press rounded-[8px] border-2 border-rose-300 py-2 text-xs font-bold text-rose-700"
+                >
+                  改用 Hunyuan3D
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
+    </div>
+  )
+}
+
+/** Hunyuan3D 下载完成后的 GLB 直接导入入口 */
+function GLBDirectImport({ onGlbLoaded }: { onGlbLoaded: (blob: Blob) => void }) {
+  const ref = useRef<HTMLInputElement>(null)
+  const handleFile = async (file: File) => {
+    const blob = file
+    onGlbLoaded(blob)
+  }
+  return (
+    <div className="rounded-[10px] border-2 border-dashed border-sky-300 bg-sky-50 p-3 text-center">
+      <p className="text-[11px] font-semibold text-sky-700 mb-2">已下载 GLB ？点此直接导入</p>
+      <button
+        onClick={() => ref.current?.click()}
+        className="clay-press inline-flex items-center gap-1.5 rounded-[8px] bg-sky-600 px-3 py-1.5 text-xs font-bold text-white"
+      >
+        <Upload size={14} /> 选择 GLB 文件
+      </button>
+      <input
+        ref={ref}
+        type="file"
+        accept=".glb,.gltf"
+        hidden
+        onChange={(e) => e.target.files?.[0] && void handleFile(e.target.files[0])}
+      />
     </div>
   )
 }

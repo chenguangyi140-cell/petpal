@@ -18,6 +18,20 @@
 
 export type CloudProvider = 'forge' | 'hunyuan'
 
+/** 云端生成时的进度通知 */
+export type ForgeProgressStatus = 'queued' | 'processing' | 'done' | 'failed'
+
+export interface ForgeProgress {
+  /** 任务当前状态（未确定时为 null） */
+  status: ForgeProgressStatus | null
+  /** 队列中的位置（未返回时为 null） */
+  queuePosition: number | null
+  /** 预计剩余毫秒数（未返回时为 null） */
+  etaMs: number | null
+  /** 错误信息（status=failed 时有值） */
+  errorMessage?: string
+}
+
 export interface CloudGenerateResult {
   /** GLB 模型的 dataURL（base64），供 ModelViewer 加载 */
   glbDataUrl: string
@@ -27,26 +41,11 @@ export interface CloudGenerateResult {
   durationMs: number
 }
 
-/** 将 base64 dataURL 转成 Blob（与 aiService.ts 中同名函数保持一致） */
-export function dataURLToBlob(dataUrl: string): Blob {
-  const parts = dataUrl.split(',')
-  const head = parts[0] ?? ''
-  const body = parts[1] ?? ''
-  const mime = /:(.*?);/.exec(head)?.[1] ?? 'application/octet-stream'
-  const bin = atob(body)
-  const bytes = new Uint8Array(bin.length)
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
-  return new Blob([bytes], { type: mime })
-}
+// 统一使用 aiService.ts 中的 dataURLToBlob，避免重复实现
+export { dataURLToBlob } from './aiService'
 
 // ─── Forge（three.ws） ────────────────────────────────────────
 
-/**
- * 调用 three.ws Forge API 生成 3D 模型（免费，无需 Key）
- *
- * @param imageBase64 - 输入图片的 base64 dataURL
- * @param prompt      - 描述词，用于引导风格（如 "a cute cartoon pet"）
- */
 type Json = Record<string, any>
 
 /**
@@ -56,10 +55,13 @@ type Json = Record<string, any>
  * - 免费档走 NVIDIA NIM + TRELLIS，返回持久化 GLB 的 CDN 链接
  * - 可能为异步任务：若返回 job_id 则轮询直至 status=done
  * - 图片以 data URI 直接放入 images 数组，照片不出浏览器（不依赖 Node Buffer）
+ * - 若提交步骤因网络抖动失败，自动重试 1 次
  */
 export async function generateViaForge(
   imageBase64: string,
   prompt: string = 'a cute cartoon pet character, full body, T-pose, white background',
+  /** 可选：进度回调，每次轮询结果都触发（含初始 status=null 的占位） */
+  onProgress?: (p: ForgeProgress) => void,
 ): Promise<CloudGenerateResult> {
   const t0 = performance.now()
   const FORGE_URL = 'https://three.ws/api/forge'
@@ -73,13 +75,32 @@ export async function generateViaForge(
     image_urls: [imageBase64], // REST 文档字段名（兼容性兜底）
   }
 
-  // 1) 提交任务
-  const submit = await fetch(FORGE_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(60_000),
-  })
+  /** 提交一次 Forge 请求（含单次自动重试） */
+  const trySubmit = async (attempt: number): Promise<Response> => {
+    let res: Response
+    try {
+      res = await fetch(FORGE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(60_000),
+      })
+    } catch (e) {
+      // 提交阶段网络抖动：尝试 1 次重试
+      if (attempt > 0) throw e
+      await new Promise((r) => setTimeout(r, 1500))
+      return trySubmit(attempt + 1)
+    }
+    if (!res.ok && attempt === 0) {
+      // 服务端 5xx 也试一次
+      await new Promise((r) => setTimeout(r, 2000))
+      return trySubmit(attempt + 1)
+    }
+    return res
+  }
+
+  // 1) 提交任务（带自动重试）
+  const submit = await trySubmit(0)
   if (!submit.ok) {
     const txt = await submit.text().catch(() => '')
     throw new Error(`Forge 提交失败 ${submit.status}: ${txt.slice(0, 200)}`)
@@ -90,7 +111,7 @@ export async function generateViaForge(
   let glbUrl = extractGlbUrl(data)
   const jobId = extractJobId(data)
   if (!glbUrl && jobId) {
-    glbUrl = await pollForgeJob(jobId)
+    glbUrl = await pollForgeJob(jobId, onProgress)
   }
   if (!glbUrl) {
     throw new Error('Forge 未返回 GLB 链接，队列可能已满，请稍后重试或改用 Hunyuan3D 网页版。')
@@ -125,7 +146,7 @@ function extractJobId(data: Json): string | null {
 }
 
 /** 轮询异步任务直至完成，返回 GLB URL */
-async function pollForgeJob(jobId: string): Promise<string> {
+async function pollForgeJob(jobId: string, onProgress?: (p: ForgeProgress) => void): Promise<string> {
   const url = `https://three.ws/api/forge?job=${encodeURIComponent(jobId)}`
   const deadline = Date.now() + 280_000 // 总计约 5 分钟
   while (Date.now() < deadline) {
@@ -133,12 +154,31 @@ async function pollForgeJob(jobId: string): Promise<string> {
       const res = await fetch(url, { signal: AbortSignal.timeout(30_000) })
       if (res.ok) {
         const data = (await res.json()) as Json
-        const status = data?.status
+        const statusRaw = data?.status
+        let status: ForgeProgressStatus | null = null
+        if (statusRaw === 'queued' || statusRaw === 'processing' || statusRaw === 'done' || statusRaw === 'failed') {
+          status = statusRaw
+        }
+        // 尝试解析队列位置 / ETA（不同字段名兜底）
+        const queuePosition = typeof data?.queue_position === 'number'
+          ? data.queue_position
+          : typeof data?.queuePosition === 'number'
+            ? data.queuePosition
+            : null
+        const etaMs = typeof data?.eta_ms === 'number'
+          ? data.eta_ms
+          : typeof data?.etaMs === 'number'
+            ? data.etaMs
+            : null
+        const errorMessage = (data?.message && status === 'failed') ? String(data.message) : undefined
+
+        onProgress?.({ status, queuePosition, etaMs, errorMessage })
+
         if (status === 'done') {
           const glb = extractGlbUrl(data)
           if (glb) return glb
         }
-        if (status === 'failed' || status === 'error') {
+        if (status === 'failed') {
           throw new Error(`Forge 生成失败：${data?.message ?? '任务失败'}`)
         }
       }
@@ -148,6 +188,7 @@ async function pollForgeJob(jobId: string): Promise<string> {
     }
     await new Promise((r) => setTimeout(r, 5000))
   }
+  onProgress?.({ status: 'failed', queuePosition: null, etaMs: null, errorMessage: '超时' })
   throw new Error('Forge 生成超时（超过 5 分钟），请稍后在网页版重试。')
 }
 

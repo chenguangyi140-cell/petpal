@@ -4,13 +4,21 @@
 
 ## [Unreleased]
 
-### 文档与工程规范
-- 项目化：新增 `README.md`（产品/功能矩阵/架构概览/快速开始/部署/贡献）
-- 新增 `docs/ARCHITECTURE.md` 架构与数据流文档
-- 新增 `docs/ROADMAP.md` 版本路线图与已知问题（国内访问根因）
-- 新增 `docs/DEPLOYMENT.md` 三平台部署手册
-- 新增 `LICENSE`（MIT）、`CHANGELOG.md`、`.editorconfig`
-- 新增 GitHub Issue / PR 模板
+## [0.2.0] - 2026-08-30
+
+### 新增
+- AI 形象工坊：照片上传 → AI 三视图 / 真·3D 模型，支持本机 ComfyUI 与云端免费路径
+- 云端生成（无需 GPU）：Forge（NVIDIA NIM + TRELLIS，全自动 GLB）与 Hunyuan3D 网页版双通道
+- 队列进度回传：realtime 状态（queued/processing/eta/队列位置）+ 进度条展示
+- 错误重试与回退：Forge 提交失败自动重试 1 次；失败后可一键改用 Hunyuan3D
+- Hunyuan3D 一键导入：下载 GLB 后直接上传至工坊预览，无需退回手动模式
+- 文档与工程规范：新增 `docs/ARCHITECTURE.md`、`docs/ROADMAP.md`、`docs/DEPLOYMENT.md`
+- 新增 `LICENSE`（MIT）、`.editorconfig`、GitHub Issue / PR 模板
+
+### 修复
+- 移除 Google Fonts 外部依赖，改用系统字体栈（解决国内首屏阻塞/白屏）
+- 移除 bridge 注释中的外部域名，避免排查混淆
+- EdgeOne Pages 401 自定义域名绑定完整步骤文档
 
 ## [0.1.0] - 2026-08-29
 
