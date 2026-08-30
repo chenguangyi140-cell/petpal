@@ -16,6 +16,15 @@ import { useLicenseStore } from '@/store/licenseStore'
 import { useAiStore } from '@/store/aiStore'
 import { getSkin } from '@/skins/registry'
 import { AIImageStudio } from '@/components/AIImageStudio'
+import { chatWithLLM } from '@/services/llm'
+import type { ChatMessage } from '@/types'
+
+/** 一键填入的 OpenAI 兼容服务商预设 */
+const PROVIDERS = [
+  { label: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat' },
+  { label: '通义千问', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen-plus' },
+  { label: 'OpenAI', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
+]
 
 export function SettingsPanel() {
   const settings = useSettingsStore()
@@ -34,6 +43,32 @@ export function SettingsPanel() {
   const [showLLM, setShowLLM] = useState(false)
   const [confirmReset, setConfirmReset] = useState(false)
   const [showStudio, setShowStudio] = useState(false)
+  const [testing, setTesting] = useState(false)
+  const [testResult, setTestResult] = useState<{ ok: boolean; msg: string } | null>(null)
+
+  /** 用当前配置发一条探针消息，验证 Key 与接口是否可用 */
+  const testLLM = async () => {
+    if (!settings.llm.apiKey) {
+      setTestResult({ ok: false, msg: '请先填写 API Key' })
+      return
+    }
+    setTesting(true)
+    setTestResult(null)
+    try {
+      const probe: ChatMessage = { id: 'probe', role: 'user', content: '你好', timestamp: Date.now() }
+      const r = await chatWithLLM({
+        messages: [probe],
+        settings: settings.llm,
+        petName: profile?.name ?? '小暖',
+        skinId: profile?.skin ?? 'pet',
+      })
+      setTestResult({ ok: true, msg: r.text || '连接成功' })
+    } catch (e) {
+      setTestResult({ ok: false, msg: (e as Error).message || '连接失败' })
+    } finally {
+      setTesting(false)
+    }
+  }
 
   const aiEndpoint = useAiStore((s) => s.endpoint)
   const setAiEndpoint = useAiStore((s) => s.setEndpoint)
@@ -70,6 +105,23 @@ export function SettingsPanel() {
 
         {showLLM && (
           <div className="mt-2 space-y-2 rounded-[10px] bg-canvas p-3">
+            <div className="flex flex-wrap gap-1.5">
+              {PROVIDERS.map((p) => (
+                <button
+                  key={p.label}
+                  onClick={() => {
+                    settings.setLLM({ baseUrl: p.baseUrl, model: p.model })
+                    setShowLLM(true)
+                  }}
+                  className="clay-press rounded-full bg-surface px-2.5 py-1 text-[10px] font-bold text-ink-muted"
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            <p className="text-[10px] text-ink-muted">
+              点选服务商自动填入，或手动填写任意 OpenAI 兼容接口。
+            </p>
             <Field label="接口地址">
               <input
                 value={settings.llm.baseUrl}
@@ -95,6 +147,23 @@ export function SettingsPanel() {
                 placeholder="sk-..."
               />
             </Field>
+            <button
+              onClick={() => void testLLM()}
+              disabled={testing}
+              className="clay-press mt-1 flex w-full items-center justify-center gap-1.5 rounded-[10px] bg-candy py-2 text-xs font-bold text-white disabled:opacity-50"
+            >
+              {testing ? '测试中…' : '测试连接'}
+            </button>
+            {testResult && (
+              <p
+                className={`mt-1 rounded-[8px] p-2 text-[10px] ${
+                  testResult.ok ? 'bg-mint/10 text-mint' : 'bg-cta/10 text-cta'
+                }`}
+              >
+                {testResult.ok ? '✓ ' : '✗ '}
+                {testResult.msg}
+              </p>
+            )}
             <p className="text-[10px] text-ink-muted">
               <Link2 size={10} className="mr-0.5 inline" />
               前端直连会暴露 Key，正式发布请走后端代理。

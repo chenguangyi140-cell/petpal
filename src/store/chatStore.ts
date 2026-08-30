@@ -76,6 +76,8 @@ export const useChatStore = create<ChatStore>()(
         const ctx: ChatContext = {
           emotion: pet.emotion,
           skin,
+          mood: pet.mood,
+          petName,
         }
 
         const userMsg = makeMsg('user', content)
