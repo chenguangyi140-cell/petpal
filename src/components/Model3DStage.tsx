@@ -4,11 +4,15 @@ import { ModelViewer } from '@/three/modelViewer'
 import { usePetStore } from '@/store/petStore'
 import { useSettingsStore } from '@/store/settingsStore'
 
-/** 真·3D 模型舞台：加载本机生成的 GLB，可自由拖拽旋转 */
+/** 真·3D 模型舞台：加载本机生成的 GLB，或本地照片生成的 3D 形象 */
 export function Model3DStage() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const viewerRef = useRef<ModelViewer | null>(null)
   const model3dUrl = usePetStore((s) => s.model3dUrl)
+  const threeViews = usePetStore((s) => s.profile?.threeViews)
+  const photo = usePetStore((s) => s.profile?.originalDataUrl)
+  // 优先 GLB；否则用正面/源照片做本地 3D 照片形象（手机端无电脑用户的默认路径）
+  const billboardSrc = model3dUrl ?? threeViews?.front ?? photo ?? null
   const reduceMotion = useSettingsStore((s) => s.shouldReduceMotion())
   const action = usePetStore((s) => s.action)
   const emotion = usePetStore((s) => s.emotion)
@@ -18,7 +22,7 @@ export function Model3DStage() {
 
   useEffect(() => {
     const canvas = canvasRef.current
-    if (!canvas || !model3dUrl) return
+    if (!canvas || !billboardSrc) return
 
     let cancelled = false
     const viewer = new ModelViewer(canvas)
@@ -36,7 +40,7 @@ export function Model3DStage() {
       .then(() => {
         if (cancelled) return
         applySize()
-        return viewer.load(model3dUrl)
+        return model3dUrl ? viewer.load(model3dUrl) : viewer.loadBillboard(billboardSrc as string)
       })
       .then(() => {
         if (!cancelled) setStatus('ready')
@@ -55,7 +59,7 @@ export function Model3DStage() {
       viewer.dispose()
       viewerRef.current = null
     }
-  }, [model3dUrl])
+  }, [billboardSrc, model3dUrl])
 
   useEffect(() => {
     viewerRef.current?.setState({ reduceMotion })

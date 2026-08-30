@@ -9,6 +9,9 @@
  */
 import type { PetAction, PetEmotion } from '@/types'
 
+// 注：服装/化妆精灵挂点（WEAR_POS / MAKEUP_POS 等）将在 P3「换装/化妆作用于 GLB」
+// 阶段接入，届时由 setWearables/setMakeup 驱动 three.js 精灵挂载。
+
 interface ViewerState {
   reduceMotion: boolean
 }
@@ -114,6 +117,40 @@ export class ModelViewer {
     if (this.modelGroup) this.scene.remove(this.modelGroup)
     this.modelGroup = new this.three!.Group()
     this.modelGroup.add(model)
+    this.modelGroup.position.y = 0.4
+    this.scene.add(this.modelGroup)
+  }
+
+  /**
+   * 加载「照片 3D」：把一张（已去背的）照片渲染成可旋转的 3D 平面形象。
+   *
+   * 用于手机端无电脑用户：无需混元 3D / 桌面，本地 three.js 即可获得一个
+   * 会呼吸、会跳、会吃、会睡的「2.5D」宠物。后续导入 GLB 时由 load() 替换。
+   */
+  async loadBillboard(imageUrl: string): Promise<void> {
+    if (!this.three) await this.init()
+    const THREE = this.three!
+
+    const tex = await new THREE.TextureLoader().loadAsync(imageUrl)
+    tex.colorSpace = THREE.SRGBColorSpace
+    const img = tex.image as { width?: number; height?: number } | undefined
+    const aspect = img && img.width && img.height ? img.width / img.height : 0.8
+    const height = 1.6
+    const width = Math.max(0.6, height * aspect)
+
+    const geo = new THREE.PlaneGeometry(width, height)
+    const mat = new THREE.MeshBasicMaterial({
+      map: tex,
+      transparent: true,
+      side: THREE.DoubleSide,
+    })
+    const mesh = new THREE.Mesh(geo, mat)
+    // 轻微前倾，更像站立而非贴墙
+    mesh.rotation.x = -0.05
+
+    if (this.modelGroup) this.scene.remove(this.modelGroup)
+    this.modelGroup = new THREE.Group()
+    this.modelGroup.add(mesh)
     this.modelGroup.position.y = 0.4
     this.scene.add(this.modelGroup)
   }

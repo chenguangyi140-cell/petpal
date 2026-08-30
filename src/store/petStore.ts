@@ -216,7 +216,9 @@ export const usePetStore = create<PetStore>()(
                 profile: {
                   ...s.profile,
                   threeViews: views,
-                  modelMode: 'threeView',
+                  // 进入 3D 舞台：有 GLB 走高精度模型，否则用正面照本地生成 3D 形象
+                  // （手机端无电脑用户也能直接得到可旋转的 3D 宠物，不依赖混元）
+                  modelMode: 'model3d',
                   updatedAt: Date.now(),
                 },
               }
