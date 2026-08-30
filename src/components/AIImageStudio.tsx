@@ -756,6 +756,7 @@ function MiniUpload({
       </div>
       <span className="text-[10px] font-bold text-ink-muted">{label}</span>
       <input
+        ref={ref}
         type="file"
         accept="image/*"
         hidden
