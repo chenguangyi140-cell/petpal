@@ -258,6 +258,62 @@ export async function removeBackground(
 }
 
 /**
+ * 裁切透明边框：将去背后的图片裁剪到非透明主体外接矩形（含少量留边）。
+ * 解决手机拍摄时主体只占画面一角，导致后续 contain 缩放后显得极小的问题。
+ */
+export async function trimTransparent(
+  source: string,
+  padding = 12,
+): Promise<string> {
+  const img = await loadImage(source)
+  const canvas = document.createElement('canvas')
+  canvas.width = img.width
+  canvas.height = img.height
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })
+  if (!ctx) throw new Error('无法创建画布上下文')
+  ctx.drawImage(img, 0, 0)
+
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+  const data = imageData.data
+  const w = canvas.width
+  const h = canvas.height
+
+  let minX = w
+  let minY = h
+  let maxX = 0
+  let maxY = 0
+
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const a = data[(y * w + x) * 4 + 3] ?? 0
+      if (a > 10) {
+        if (x < minX) minX = x
+        if (x > maxX) maxX = x
+        if (y < minY) minY = y
+        if (y > maxY) maxY = y
+      }
+    }
+  }
+
+  // 全透明或单点 fallback
+  if (minX > maxX || minY > maxY) return source
+
+  const x = Math.max(0, minX - padding)
+  const y = Math.max(0, minY - padding)
+  const cw = Math.min(w - x, maxX - minX + 1 + padding * 2)
+  const ch = Math.min(h - y, maxY - minY + 1 + padding * 2)
+  if (cw <= 0 || ch <= 0) return source
+
+  const out = document.createElement('canvas')
+  out.width = cw
+  out.height = ch
+  const octx = out.getContext('2d')
+  if (!octx) throw new Error('无法创建画布上下文')
+  octx.drawImage(canvas, x, y, cw, ch, 0, 0, cw, ch)
+  return out.toDataURL('image/png')
+}
+
+/**
  * 手动裁剪兜底：用户框选矩形区域直接裁切
  * 自动去背失败（复杂背景）时的保底方案
  */

@@ -12,7 +12,7 @@ import {
 } from 'lucide-react'
 import type { SkinId, ThreeViewSet } from '@/types'
 import { usePetStore } from '@/store/petStore'
-import { compressImage, removeBackground } from '@/services/segmentation'
+import { compressImage, removeBackground, trimTransparent } from '@/services/segmentation'
 import { getHunyuan3DInfo } from '@/services/cloudService'
 import { ThreeViewRenderer } from '@/engine/threeViewRenderer'
 import { ModelViewer } from '@/three/modelViewer'
@@ -506,9 +506,10 @@ function MiniUpload({
       const raw = await fileToDataUrl(file)
       // 先自动扣图，保证三视图背景干净（非纯色背景也能得到透明前景）
       const cut = await removeBackground(raw)
-      const cutDataUrl = cut.dataUrl
+      // 裁切透明边框：手机拍照主体常在画面一角，contain 缩放后显得极小
+      const trimmed = await trimTransparent(cut.dataUrl, 16)
       // 缩放并保留透明通道（PNG），控制体积的同时不丢失去背结果
-      const compressed = await compressImage(cutDataUrl, 1024, 0.92, 'image/png')
+      const compressed = await compressImage(trimmed, 1024, 0.92, 'image/png')
       onChange(compressed)
     } catch (err) {
       console.error('自动扣图失败，回退为仅压缩原图:', err)

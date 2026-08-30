@@ -263,12 +263,12 @@ export class ThreeViewRenderer {
     this.ctx.restore()
   }
 
-  /** 计算主体绘制包围盒（居中，留边） */
+  /** 计算主体绘制包围盒（居中，尽量填满画布） */
   private viewBox(): { x: number; y: number; w: number; h: number } {
     const W = this.logicalWidth
     const H = this.logicalHeight
-    const h = H * 0.82
-    const w = W * 0.72
+    const h = H * 0.92
+    const w = W * 0.92
     return { x: (W - w) / 2, y: (H - h) / 2, w, h }
   }
 
@@ -310,9 +310,11 @@ export class ThreeViewRenderer {
 
   private drawBackdrop(W: number, H: number): void {
     const { ctx } = this
-    const g = ctx.createRadialGradient(W / 2, H * 0.5, H * 0.12, W / 2, H * 0.5, H * 0.8)
-    g.addColorStop(0, 'rgba(0,0,0,0)')
-    g.addColorStop(1, 'rgba(0,0,0,0.07)')
+    // 柔和的舞台光晕，突出主体而不显脏
+    const g = ctx.createRadialGradient(W / 2, H * 0.55, H * 0.05, W / 2, H * 0.55, H * 0.75)
+    g.addColorStop(0, 'rgba(255,255,255,0.95)')
+    g.addColorStop(0.6, 'rgba(255,255,255,0.65)')
+    g.addColorStop(1, 'rgba(230,235,245,0.45)')
     ctx.save()
     ctx.fillStyle = g
     ctx.fillRect(0, 0, W, H)
@@ -321,12 +323,12 @@ export class ThreeViewRenderer {
 
   private drawGroundShadow(W: number, H: number, scale: number): void {
     const { ctx } = this
-    const cy = H * 0.9
-    const rx = W * 0.22 * scale
-    const ry = W * 0.06 * scale
+    const cy = H * 0.88
+    const rx = W * 0.28 * scale
+    const ry = W * 0.08 * scale
     ctx.save()
-    ctx.fillStyle = 'rgba(15,15,20,0.20)'
-    ctx.filter = 'blur(7px)'
+    ctx.fillStyle = 'rgba(15,15,20,0.18)'
+    ctx.filter = 'blur(8px)'
     ctx.beginPath()
     ctx.ellipse(W / 2, cy, rx, ry, 0, 0, Math.PI * 2)
     ctx.fill()
