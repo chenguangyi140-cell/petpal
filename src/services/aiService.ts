@@ -104,12 +104,12 @@ export async function generateModel3d(image: string, type: GenType): Promise<Blo
  *
  * @param image   - 输入图片（base64 dataURL）
  * @param type    - 宠物/人物类型（仅用于生成提示词）
- * @param provider - 'forge'（自动）| 'hunyuan'（跳转网页手动）
+ * @param provider - 当前仅支持 'hunyuan'（跳转网页手动操作）
  */
 export async function generateModel3dCloud(
   image: string,
   type: GenType,
-  provider: CloudProvider = 'forge',
+  provider: CloudProvider = 'hunyuan',
 ): Promise<Blob> {
   const isPet = type === 'pet'
   const prompt = isPet

@@ -9,17 +9,11 @@ import {
   Sparkles,
   Upload,
   X,
-  Zap,
 } from 'lucide-react'
 import type { SkinId, ThreeViewSet } from '@/types'
 import { usePetStore } from '@/store/petStore'
 import { compressImage } from '@/services/segmentation'
-import {
-  dataURLToBlob,
-  generateViaForge,
-  getHunyuan3DInfo,
-  type ForgeProgress,
-} from '@/services/cloudService'
+import { getHunyuan3DInfo } from '@/services/cloudService'
 import { ThreeViewRenderer } from '@/engine/threeViewRenderer'
 import { ModelViewer } from '@/three/modelViewer'
 import { SKIN_IDS, getSkin } from '@/skins/registry'
@@ -46,11 +40,8 @@ export function AIImageStudio({ mode, onClose }: StudioProps) {
   const [photo, setPhoto] = useState<string | null>(null)
 
   const [method, setMethod] = useState<Method>('manual')
-  const [generating, setGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [hunyuanInfo, setHunyuanInfo] = useState<{ webUrl: string; steps: string[]; fallbackNote: string } | null>(null)
-  const [forgeProgress, setForgeProgress] = useState<ForgeProgress | null>(null)
-  const [retryKey, setRetryKey] = useState(0) // 用于重置生成状态
 
   // 手动模式资产
   const [manFront, setManFront] = useState<string | null>(null)
@@ -68,37 +59,10 @@ export function AIImageStudio({ mode, onClose }: StudioProps) {
     setPhoto(compressed)
   }, [])
 
-  // 云端生成：Forge（自动）
-  const onRunCloudForge = useCallback(async () => {
-    if (!photo) return
-    setGenerating(true)
-    setError(null)
-    setForgeProgress({ status: 'queued', queuePosition: null, etaMs: null })
-    try {
-      const result = await generateViaForge(
-        photo,
-        type === 'pet'
-          ? 'a cute cartoon pet character, full body, T-pose, white background, stylized 3D render'
-          : 'a cute cartoon human character, full body, T-pose, white background, stylized 3D render',
-        (p) => setForgeProgress(p),
-      )
-      const blob = dataURLToBlob(result.glbDataUrl)
-      setResultGlb(blob)
-      setResultViews(null)
-      setStep('preview')
-    } catch (e) {
-      setError(e instanceof Error ? e.message : '云端生成失败，请重试。')
-      setForgeProgress(null)
-    } finally {
-      setGenerating(false)
-    }
-  }, [photo, type])
-
   // 云端生成：Hunyuan3D（跳转网页版手动操作）
   const onRunCloudHunyuan = useCallback(() => {
     setHunyuanInfo(getHunyuan3DInfo())
     setError(null)
-    setGenerating(false)
     // 不跳转步骤，直接展示引导卡片
   }, [])
 
@@ -167,10 +131,7 @@ export function AIImageStudio({ mode, onClose }: StudioProps) {
             <MethodStep
               method={method}
               setMethod={setMethod}
-              generating={generating}
               error={error}
-              photo={photo}
-              onRunCloudForge={onRunCloudForge}
               onRunCloudHunyuan={onRunCloudHunyuan}
               hunyuanInfo={hunyuanInfo}
               // 手动资产
@@ -183,10 +144,6 @@ export function AIImageStudio({ mode, onClose }: StudioProps) {
               manGlb={manGlb}
               setManGlb={setManGlb}
               onUseManual={useManual}
-              forgeProgress={forgeProgress}
-              retryKey={retryKey}
-              setRetryKey={setRetryKey}
-              setError={setError}
               setResultGlb={setResultGlb}
               setResultViews={setResultViews}
               setStep={setStep}
@@ -309,11 +266,8 @@ function SourceStep({
 function MethodStep({
   method,
   setMethod,
-  generating,
   error,
-  photo,
   hunyuanInfo,
-  onRunCloudForge,
   onRunCloudHunyuan,
   manFront,
   setManFront,
@@ -324,21 +278,14 @@ function MethodStep({
   manGlb,
   setManGlb,
   onUseManual,
-  forgeProgress,
-  retryKey,
-  setRetryKey,
-  setError,
   setResultGlb,
   setResultViews,
   setStep,
 }: {
   method: Method
   setMethod: (m: Method) => void
-  generating: boolean
   error: string | null
-  photo: string | null
   hunyuanInfo: { webUrl: string; steps: string[]; fallbackNote: string } | null
-  onRunCloudForge: () => void
   onRunCloudHunyuan: () => void
   manFront: string | null
   setManFront: (v: string | null) => void
@@ -349,10 +296,6 @@ function MethodStep({
   manGlb: Blob | null
   setManGlb: (v: Blob | null) => void
   onUseManual: () => void
-  forgeProgress: ForgeProgress | null
-  retryKey: number
-  setRetryKey: (v: number) => void
-  setError: (v: string | null) => void
   setResultGlb: (v: Blob | null) => void
   setResultViews: (v: ThreeViewSet | null) => void
   setStep: (v: Step) => void
@@ -366,15 +309,8 @@ function MethodStep({
 
       {/* 云端免费生成（无需 GPU） */}
       <CloudMethodCard
-        key={retryKey}
         method={method}
         setMethod={setMethod}
-        generating={generating}
-        error={error}
-        onRetryForge={() => { setRetryKey(retryKey + 1); setError(null) }}
-        photo={photo}
-        forgeProgress={forgeProgress}
-        onRunCloudForge={onRunCloudForge}
         onRunCloudHunyuan={onRunCloudHunyuan}
         hunyuanInfo={hunyuanInfo}
         onGlbImported={(blob) => {
@@ -436,43 +372,17 @@ function MethodStep({
 function CloudMethodCard({
   method,
   setMethod,
-  generating,
-  error,
-  onRetryForge,
-  photo,
-  forgeProgress,
-  onRunCloudForge,
-  onRunCloudHunyuan,
   hunyuanInfo,
+  onRunCloudHunyuan,
   onGlbImported,
 }: {
   method: Method
   setMethod: (m: Method) => void
-  generating: boolean
-  error: string | null
-  onRetryForge: () => void
-  photo: string | null
-  forgeProgress: ForgeProgress | null
-  onRunCloudForge: () => void
-  onRunCloudHunyuan: () => void
   hunyuanInfo: { webUrl: string; steps: string[]; fallbackNote: string } | null
+  onRunCloudHunyuan: () => void
   onGlbImported: (blob: Blob) => void
 }) {
   const selected = method === 'cloud'
-
-  // 队列进度百分比估算（无 queuePosition 时走简单时间估算）
-  const progressPct = forgeProgress?.status === 'done' ? 100
-    : forgeProgress?.queuePosition && forgeProgress.queuePosition > 0
-      ? Math.min(90, Math.round(100 - forgeProgress.queuePosition * 10))
-      : forgeProgress?.status === 'processing' ? 60 : 20
-
-  const fmtETA = (ms: number | null) => {
-    if (ms == null) return null
-    const s = Math.max(1, Math.round(ms / 1000))
-    if (s < 60) return `~${s}秒`
-    if (s < 3600) return `~${Math.ceil(s / 60)}分钟`
-    return `~${Math.ceil(s / 3600)}小时`
-  }
 
   return (
     <div className="mt-3">
@@ -486,57 +396,12 @@ function CloudMethodCard({
           <Cloud size={18} className="text-pink-500" /> 云端免费生成（无需 GPU）
         </div>
         <p className="mt-1 text-xs text-ink-muted">
-          浏览器直连云端 AI，照片不出本机。Forge 全自动出 GLB；Hunyuan3D 每天 20 次免费。
+          浏览器直连腾讯 Hunyuan3D，照片不出本机。每天免费 20 次，生成后导入 GLB 即可。
         </p>
       </button>
 
       {selected && (
         <div className="mt-3 space-y-3">
-          {/* Forge 自动生成 */}
-          <div className="rounded-[10px] border-2 border-line bg-surface p-3">
-            <div className="flex items-center gap-2 font-bold text-ink">
-              <Zap size={14} className="text-amber-500" /> Forge（全自动 · 免 Key）
-            </div>
-            <p className="mt-1 text-[11px] text-ink-muted">
-              基于 NVIDIA NIM + TRELLIS，提交后通常 1–3 分钟返回 GLB 模型（免费 draft 档）。
-            </p>
-            <button
-              onClick={onRunCloudForge}
-              disabled={!photo || generating}
-              className="clay-press mt-2 flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-clay-sm)] bg-candy py-2.5 font-bold text-white disabled:opacity-50"
-            >
-              {generating ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
-              {generating ? '云端生成中…（可能需 1–3 分钟）' : '用 Forge 一键生成 3D'}
-            </button>
-            {!photo && (
-              <p className="mt-1 text-[10px] font-semibold text-amber-600">请先在第一步上传照片。</p>
-            )}
-
-            {/* 队列状态展示 */}
-            {forgeProgress && !generating && (
-              <div className="mt-3 space-y-2">
-                <div className="flex items-center justify-between text-[11px] font-semibold text-ink-muted">
-                  <span>
-                    {forgeProgress.status === 'queued' && `队列中 · 第 ${forgeProgress.queuePosition ?? '?'} 位`}
-                    {forgeProgress.status === 'processing' && '正在生成中…'}
-                    {forgeProgress.status === 'failed' && (forgeProgress.errorMessage ? `失败：${forgeProgress.errorMessage}` : '生成失败')}
-                  </span>
-                  {forgeProgress.etaMs != null && <span>{fmtETA(forgeProgress.etaMs)}</span>}
-                </div>
-                <div className="h-2 rounded-full bg-line overflow-hidden">
-                  <div
-                    className={`h-full rounded-full transition-all duration-500 ${
-                      forgeProgress.status === 'failed' ? 'bg-rose-500'
-                      : forgeProgress.status === 'processing' ? 'bg-amber-500 animate-pulse'
-                      : 'bg-amber-400'
-                    }`}
-                    style={{ width: `${progressPct}%` }}
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-
           {/* Hunyuan3D 网页版 */}
           <div className="rounded-[10px] border-2 border-line bg-surface p-3">
             <div className="flex items-center gap-2 font-bold text-ink">
@@ -547,8 +412,7 @@ function CloudMethodCard({
             </p>
             <button
               onClick={onRunCloudHunyuan}
-              disabled={generating}
-              className="clay-press mt-2 flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-clay-sm)] bg-sky-500 py-2.5 font-bold text-white disabled:opacity-50"
+              className="clay-press mt-2 flex w-full items-center justify-center gap-1.5 rounded-[var(--radius-clay-sm)] bg-sky-500 py-2.5 font-bold text-white"
             >
               <ArrowRight size={16} /> 查看 Hunyuan3D 使用指引
             </button>
@@ -578,27 +442,6 @@ function CloudMethodCard({
               </div>
             )}
           </div>
-
-          {/* 错误重试区 */}
-          {error && (
-            <div className="rounded-[10px] border-2 border-rose-200 bg-rose-50 p-3 space-y-2">
-              <p className="text-xs font-semibold text-rose-700">{error}</p>
-              <div className="flex gap-2">
-                <button
-                  onClick={onRetryForge}
-                  className="flex-1 clay-press rounded-[8px] bg-rose-600 py-2 text-xs font-bold text-white"
-                >
-                  重试 Forge
-                </button>
-                <button
-                  onClick={() => { setMethod('cloud'); void onRunCloudHunyuan() }}
-                  className="flex-1 clay-press rounded-[8px] border-2 border-rose-300 py-2 text-xs font-bold text-rose-700"
-                >
-                  改用 Hunyuan3D
-                </button>
-              </div>
-            </div>
-          )}
         </div>
       )}
     </div>
