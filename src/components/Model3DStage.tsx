@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { Loader2 } from 'lucide-react'
-import { ModelViewer } from '@/three/modelViewer'
+import { ModelViewer, type ResolvedWearable } from '@/three/modelViewer'
 import { usePetStore } from '@/store/petStore'
 import { useSettingsStore } from '@/store/settingsStore'
+import { getSkin } from '@/skins/registry'
+import type { WearableType } from '@/types'
 
 /** 真·3D 模型舞台：加载本机生成的 GLB，或本地照片生成的 3D 形象 */
 export function Model3DStage() {
@@ -18,6 +20,11 @@ export function Model3DStage() {
   const emotion = usePetStore((s) => s.emotion)
   const isSleeping = usePetStore((s) => s.isSleeping)
   const tap = usePetStore((s) => s.tap)
+  // 换装 / 化妆：实时驱动 3D 模型
+  const equipped = usePetStore((s) => s.equipped)
+  const wearableOffsets = usePetStore((s) => s.wearableOffsets)
+  const makeup = usePetStore((s) => s.makeup)
+  const skinId = usePetStore((s) => s.profile?.skin)
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
 
   useEffect(() => {
@@ -75,6 +82,28 @@ export function Model3DStage() {
   useEffect(() => {
     viewerRef.current?.setSleeping(isSleeping)
   }, [isSleeping])
+
+  // 换装：将 equipped 映射为精灵列表，实时挂到 3D 模型
+  useEffect(() => {
+    const v = viewerRef.current
+    if (!v) return
+    const skin = getSkin(skinId ?? 'pet')
+    const list = Object.entries(equipped)
+      .map(([type, id]) => {
+        if (!id) return null
+        const item = skin.wearables.find((w) => w.id === id)
+        if (!item) return null
+        const offset = wearableOffsets[`${type}@${id}`]
+        return { asset: item.asset, type: item.type as WearableType, offset }
+      })
+      .filter(Boolean) as ResolvedWearable[]
+    v.setWearables(list)
+  }, [equipped, wearableOffsets, skinId])
+
+  // 化妆：实时驱动 3D 模型
+  useEffect(() => {
+    viewerRef.current?.setMakeup(makeup ?? [])
+  }, [makeup])
 
   // 点击模型本体：轻互动 + 气泡（由 PetStage 统一展示/朗读）
   const handleTap = () => {
