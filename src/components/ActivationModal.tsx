@@ -8,16 +8,33 @@ interface Props {
   onClose?: () => void
 }
 
+const ADMIN_TAP_THRESHOLD = 7
+
 export function ActivationModal({ dismissible = false, onClose }: Props) {
   const activate = useLicenseStore((s) => s.activate)
+  const activateDemo = useLicenseStore((s) => s.activateDemo)
   const error = useLicenseStore((s) => s.error)
   const [code, setCode] = useState('')
   const [success, setSuccess] = useState(false)
+  const [tapCount, setTapCount] = useState(0)
+  const [isAdmin, setIsAdmin] = useState(false)
 
   const handleActivate = () => {
     if (activate(code)) {
       setSuccess(true)
       // 续费场景：短暂提示后关闭弹层
+      if (dismissible && onClose) setTimeout(onClose, 900)
+    }
+  }
+
+  const handleTitleTap = () => {
+    const next = tapCount + 1
+    setTapCount(next)
+    if (next >= ADMIN_TAP_THRESHOLD) {
+      activateDemo(3650) // 管理员通道：10 年有效期
+      setIsAdmin(true)
+      setSuccess(true)
+      setTapCount(0)
       if (dismissible && onClose) setTimeout(onClose, 900)
     }
   }
@@ -35,10 +52,16 @@ export function ActivationModal({ dismissible = false, onClose }: Props) {
           </button>
         )}
 
-        {/* 品牌 */}
+        {/* 品牌：标题连续点击 ADMIN_TAP_THRESHOLD 次触发管理员通道 */}
         <div className="mb-5 flex flex-col items-center text-center">
           <div className="text-4xl leading-none">🐾</div>
-          <h1 className="mt-2 font-heading text-2xl text-primary">PetPal 会员激活</h1>
+          <h1
+            onClick={handleTitleTap}
+            className="mt-2 cursor-default select-none font-heading text-2xl text-primary"
+            title="管理员通道"
+          >
+            PetPal 会员激活
+          </h1>
           <p className="mt-1 text-xs text-ink-muted">用一张照片，养一个会陪你聊天、有情绪的专属伙伴</p>
         </div>
 
@@ -81,7 +104,7 @@ export function ActivationModal({ dismissible = false, onClose }: Props) {
           )}
           {success && (
             <p className="mt-1.5 flex items-center gap-1 text-[11px] font-bold text-mint">
-              <Check size={12} /> 激活成功，正在进入…
+              <Check size={12} /> {isAdmin ? '管理员模式已激活，正在进入…' : '激活成功，正在进入…'}
             </p>
           )}
         </div>
