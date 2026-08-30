@@ -3,7 +3,11 @@
  *
  * 动态 import 'three'，避免拖入主包；仅在用户真正使用 3D 模型时才加载。
  * 加载本机 ComfyUI 生成的 GLB，渲染可自由拖拽旋转、带待机浮动的动态 3D 形象。
+ *
+ * 动作系统：订阅 store 的 action / emotion / sleep / tap，对无骨骼的 GLB 做
+ * 伪 3D 表演（呼吸、跳跃、低头吃、睡觉歪头、开心弹跳、点击脉冲），让模型「活」起来。
  */
+import type { PetAction, PetEmotion } from '@/types'
 
 interface ViewerState {
   reduceMotion: boolean
@@ -24,6 +28,15 @@ export class ModelViewer {
   private clock: any = null
   private dpr = 1
   private disposed = false
+
+  // 表演状态：由 store 订阅驱动
+  private action: PetAction = 'idle'
+  private emotion: PetEmotion = 'neutral'
+  private sleeping = false
+  /** 瞬时动作起点（elapsedTime），用于一次性动画计时 */
+  private actionStart = 0
+  /** 上次点击时刻（elapsedTime），用于点击脉冲 */
+  private tapAt = -10
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas
@@ -110,6 +123,28 @@ export class ModelViewer {
     if (this.controls) this.controls.autoRotate = !this.state.reduceMotion
   }
 
+  /** 设定当前肢体动作；瞬时动作（跳/滚/伸）记录起点由 loop 自动回落 */
+  setAction(action: PetAction): void {
+    if (action === 'jump' || action === 'roll' || action === 'stretch') {
+      this.actionStart = this.clock?.elapsedTime ?? 0
+    }
+    this.action = action
+  }
+
+  setEmotion(emotion: PetEmotion): void {
+    this.emotion = emotion
+  }
+
+  setSleeping(v: boolean): void {
+    this.sleeping = v
+    if (v) this.action = 'sleep'
+  }
+
+  /** 点击宠物：触发一个短促的缩放脉冲 */
+  triggerTap(): void {
+    this.tapAt = this.clock?.elapsedTime ?? 0
+  }
+
   resize(w: number, h: number): void {
     if (!this.three || !this.renderer || !this.camera) return
     this.renderer.setSize(w, h, false)
@@ -120,8 +155,64 @@ export class ModelViewer {
   private loop(): void {
     if (this.disposed) return
     if (this.modelGroup && !this.state.reduceMotion) {
-      // 待机浮动：轻微上下呼吸
-      this.modelGroup.position.y = 0.4 + Math.sin(this.clock.elapsedTime * 1.6) * 0.04
+      const t = this.clock.elapsedTime
+      const baseY = 0.4
+
+      let y = baseY
+      let rotX = 0
+      let scale = 1
+      let spin = 0
+
+      if (this.sleeping) {
+        // 睡觉：压低、歪头、缓慢起伏
+        y = 0.26 + Math.sin(t * 0.8) * 0.012
+        rotX = 0.5
+        scale = 0.96
+      } else {
+        const a = String(this.action)
+        if (a === 'jump') {
+          const dt = t - this.actionStart
+          const dur = 0.6
+          if (dt < dur) y = baseY + Math.sin((dt / dur) * Math.PI) * 0.55
+          else this.action = 'idle'
+        } else if (a === 'happy' || a === 'cheer' || a === 'wagTail') {
+          // 开心：高频弹跳 + 轻微缩放脉动
+          y = baseY + Math.abs(Math.sin(t * 6)) * 0.13
+          scale = 1 + Math.sin(t * 6) * 0.05
+        } else if (a === 'eat') {
+          // 低头吃：前后点头
+          rotX = Math.sin(t * 4) * 0.18
+          y = baseY - 0.03
+        } else if (a === 'stretch' || a === 'roll') {
+          const dt = t - this.actionStart
+          if (dt < 1) rotX = Math.sin(dt * Math.PI) * 0.45
+          else this.action = 'idle'
+        } else {
+          // 待机呼吸
+          y = baseY + Math.sin(t * 1.6) * 0.04
+          const emo = String(this.emotion)
+          if (emo === 'sad') {
+            y -= 0.05
+            rotX = -0.12
+          } else if (emo === 'happy') {
+            scale = 1 + Math.sin(t * 2) * 0.03
+          } else if (emo === 'angry') {
+            rotX = Math.sin(t * 3) * 0.06
+          }
+        }
+      }
+
+      // 点击脉冲：0.4s 内放大回落
+      const tapDt = t - this.tapAt
+      if (tapDt >= 0 && tapDt < 0.4) {
+        scale *= 1 + (1 - tapDt / 0.4) * 0.14
+        spin = (1 - tapDt / 0.4) * 0.3
+      }
+
+      this.modelGroup.position.y = y
+      this.modelGroup.rotation.x = rotX
+      this.modelGroup.rotation.y = spin
+      this.modelGroup.scale.setScalar(Math.max(0.4, scale))
     }
     this.controls?.update()
     this.renderer?.render(this.scene, this.camera)

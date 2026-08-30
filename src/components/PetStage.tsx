@@ -3,9 +3,11 @@ import { Heart, Zap, Gift, Drumstick } from 'lucide-react'
 import type { MoodState } from '@/types'
 import { usePetStore } from '@/store/petStore'
 import { useChatStore } from '@/store/chatStore'
+import { useSettingsStore } from '@/store/settingsStore'
 import { usePetRenderer } from '@/hooks/usePetRenderer'
 import { getSkin } from '@/skins/registry'
 import { getMoodAlerts } from '@/engine/emotion'
+import { speak } from '@/services/speak'
 import { ThreeViewStage } from '@/components/ThreeViewStage'
 import { Model3DStage } from '@/components/Model3DStage'
 
@@ -33,6 +35,7 @@ export function PetStage() {
   const tap = usePetStore((s) => s.tap)
   const playAction = usePetStore((s) => s.playAction)
   const messages = useChatStore((s) => s.messages)
+  const voice = useSettingsStore((s) => s.voice)
   const skinId = usePetStore((s) => s.profile?.skin)
   const modelMode = usePetStore((s) => s.profile?.modelMode)
   const threeViews = usePetStore((s) => s.profile?.threeViews)
@@ -41,12 +44,16 @@ export function PetStage() {
 
   const renderer = usePetRenderer(canvasRef)
 
-  /** 展示临时气泡，4 秒后自动消失 */
-  const showBubble = useCallback((text: string) => {
-    setBubble(text)
-    if (bubbleTimer.current) window.clearTimeout(bubbleTimer.current)
-    bubbleTimer.current = window.setTimeout(() => setBubble(null), 4000)
-  }, [])
+  /** 展示临时气泡，4 秒后自动消失；语音开启时同步朗读 */
+  const showBubble = useCallback(
+    (text: string) => {
+      setBubble(text)
+      if (bubbleTimer.current) window.clearTimeout(bubbleTimer.current)
+      bubbleTimer.current = window.setTimeout(() => setBubble(null), 4000)
+      if (voice.enabled) speak(text, { rate: voice.rate, pitch: voice.pitch, volume: voice.volume })
+    },
+    [voice],
+  )
 
   // ── 音频同步事件处理 ──
   useEffect(() => {
@@ -62,17 +69,24 @@ export function PetStage() {
         renderer.attachAudioElement?.(audioEl)
       }
     }
+    // GLB 模式下点击模型触发气泡（扁平模式直接调用 showBubble，不走事件）
+    const handlePetBubble = (e: Event) => {
+      const text = (e as CustomEvent<{ text: string }>).detail?.text
+      if (text) showBubble(text)
+    }
 
     window.addEventListener('petpal:start-mic' as any, handleStartMic as any)
     window.addEventListener('petpal:stop-audio' as any, handleStopAudio as any)
     window.addEventListener('petpal:play-audio' as any, handlePlayAudio as any)
+    window.addEventListener('petpal:pet-bubble' as any, handlePetBubble as any)
 
     return () => {
       window.removeEventListener('petpal:start-mic' as any, handleStartMic as any)
       window.removeEventListener('petpal:stop-audio' as any, handleStopAudio as any)
       window.removeEventListener('petpal:play-audio' as any, handlePlayAudio as any)
+      window.removeEventListener('petpal:pet-bubble' as any, handlePetBubble as any)
     }
-  }, [renderer])
+  }, [renderer, showBubble])
 
   // 点击宠物本体：轻量互动 + 随机动作反馈
   useEffect(() => {

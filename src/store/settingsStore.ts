@@ -25,6 +25,12 @@ const DEFAULT_SETTINGS: AppSettings = {
   dailyProactiveLimit: 8,
   proactiveEnabled: true,
   reduceMotion: false,
+  voice: {
+    enabled: true,
+    rate: 1.05,
+    pitch: 1.12,
+    volume: 1,
+  },
 }
 
 interface SettingsStore extends AppSettings {
@@ -74,6 +80,7 @@ export const useSettingsStore = create<SettingsStore>()(
         dailyProactiveLimit: s.dailyProactiveLimit,
         proactiveEnabled: s.proactiveEnabled,
         reduceMotion: s.reduceMotion,
+        voice: s.voice,
       }),
     },
   ),

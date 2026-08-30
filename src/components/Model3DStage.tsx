@@ -10,6 +10,10 @@ export function Model3DStage() {
   const viewerRef = useRef<ModelViewer | null>(null)
   const model3dUrl = usePetStore((s) => s.model3dUrl)
   const reduceMotion = useSettingsStore((s) => s.shouldReduceMotion())
+  const action = usePetStore((s) => s.action)
+  const emotion = usePetStore((s) => s.emotion)
+  const isSleeping = usePetStore((s) => s.isSleeping)
+  const tap = usePetStore((s) => s.tap)
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
 
   useEffect(() => {
@@ -57,14 +61,32 @@ export function Model3DStage() {
     viewerRef.current?.setState({ reduceMotion })
   }, [reduceMotion])
 
+  // 订阅宠物状态 → 驱动 3D 模型表演
+  useEffect(() => {
+    viewerRef.current?.setAction(action)
+  }, [action])
+  useEffect(() => {
+    viewerRef.current?.setEmotion(emotion)
+  }, [emotion])
+  useEffect(() => {
+    viewerRef.current?.setSleeping(isSleeping)
+  }, [isSleeping])
+
+  // 点击模型本体：轻互动 + 气泡（由 PetStage 统一展示/朗读）
+  const handleTap = () => {
+    const reply = tap()
+    window.dispatchEvent(new CustomEvent('petpal:pet-bubble', { detail: { text: reply } }))
+  }
+
   return (
     <section className="relative flex-1 overflow-hidden bg-gradient-to-b from-sky-100 via-sky-50 to-amber-50">
       <div className="relative flex h-[380px] w-full items-center justify-center sm:h-[420px]">
         <canvas
           ref={canvasRef}
+          onClick={handleTap}
           className="h-full w-full cursor-grab touch-none active:cursor-grabbing"
           role="img"
-          aria-label="3D 模型形象，可拖拽旋转"
+          aria-label="3D 模型形象，可拖拽旋转，点击互动"
         />
         {status === 'loading' && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-ink-muted">

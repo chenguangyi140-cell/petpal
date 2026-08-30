@@ -278,6 +278,18 @@ export interface SegmentationOptions {
   feather?: boolean
 }
 
+/** 语音（TTS）设置：浏览器端朗读，无需 API Key */
+export interface VoiceSettings {
+  /** 是否开启宠物语音 */
+  enabled: boolean
+  /** 语速 0.5–2 */
+  rate: number
+  /** 音调 0–2 */
+  pitch: number
+  /** 音量 0–1 */
+  volume: number
+}
+
 /** 应用全局设置 */
 export interface AppSettings {
   llm: LLMSettings
@@ -288,4 +300,6 @@ export interface AppSettings {
   proactiveEnabled: boolean
   /** 尊重系统「减少动态效果」偏好 */
   reduceMotion: boolean
+  /** 宠物语音（TTS） */
+  voice: VoiceSettings
 }

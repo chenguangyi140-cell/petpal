@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Mic, Upload, Play, Pause, StopCircle } from 'lucide-react'
+import { Mic, Upload, Play, Pause, StopCircle, Volume2 } from 'lucide-react'
+import { useSettingsStore } from '@/store/settingsStore'
+import { speak } from '@/services/speak'
 
 type AudioMode = 'idle' | 'recording' | 'playing' | 'uploading'
 
@@ -14,6 +16,12 @@ export function AudioPanel() {
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const currentBlobUrl = useRef<string | null>(null)
   const recordingStreamRef = useRef<MediaStream | null>(null)
+
+  // 宠物语音（TTS）开关与试听
+  const voice = useSettingsStore((s) => s.voice)
+  const setVoice = (patch: Partial<typeof voice>) =>
+    useSettingsStore.getState().update({ voice: { ...voice, ...patch } })
+  const tryVoice = () => speak('我是你的宠物，很高兴见到你呀！', { rate: voice.rate, pitch: voice.pitch, volume: voice.volume })
 
   // ── 监听渲染器状态变化 ──
   useEffect(() => {
@@ -157,6 +165,71 @@ export function AudioPanel() {
 
   return (
     <div className="flex flex-col gap-4">
+      {/* 宠物语音（TTS） */}
+      <div>
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-bold text-ink">宠物语音</h3>
+            <p className="mt-0.5 text-xs text-ink-muted">
+              浏览器朗读回复，免费无需 Key
+            </p>
+          </div>
+          <button
+            onClick={() => setVoice({ enabled: !voice.enabled })}
+            role="switch"
+            aria-checked={voice.enabled}
+            className={`relative h-7 w-12 cursor-pointer rounded-full transition-colors duration-200 ${
+              voice.enabled ? 'bg-primary' : 'bg-ink/15'
+            }`}
+            aria-label="开关宠物语音"
+          >
+            <span
+              className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-all duration-200 ${
+                voice.enabled ? 'left-6' : 'left-1'
+              }`}
+            />
+          </button>
+        </div>
+
+        {voice.enabled && (
+          <div className="mt-3 space-y-3 rounded-[var(--radius-clay)] bg-canvas p-3">
+            <label className="flex items-center gap-3 text-xs font-semibold text-ink-muted">
+              <Volume2 size={14} className="text-violet-500" />
+              语速 {voice.rate.toFixed(2)}
+              <input
+                type="range"
+                min={0.5}
+                max={1.6}
+                step={0.05}
+                value={voice.rate}
+                onChange={(e) => setVoice({ rate: Number(e.target.value) })}
+                className="flex-1 accent-violet-500"
+              />
+            </label>
+            <label className="flex items-center gap-3 text-xs font-semibold text-ink-muted">
+              <Volume2 size={14} className="text-violet-500" />
+              音调 {voice.pitch.toFixed(2)}
+              <input
+                type="range"
+                min={0.5}
+                max={1.6}
+                step={0.05}
+                value={voice.pitch}
+                onChange={(e) => setVoice({ pitch: Number(e.target.value) })}
+                className="flex-1 accent-violet-500"
+              />
+            </label>
+            <button
+              onClick={tryVoice}
+              className="clay-press flex w-full items-center justify-center gap-2 rounded-[var(--radius-clay-sm)] bg-violet-100 py-2.5 text-sm font-bold text-violet-600 transition-all duration-200 hover:bg-violet-200"
+            >
+              <Volume2 size={16} strokeWidth={2.5} />
+              试听一下
+            </button>
+          </div>
+        )}
+      </div>
+
       {/* 标题 */}
       <div>
         <h3 className="text-sm font-bold text-ink">声音同步</h3>
