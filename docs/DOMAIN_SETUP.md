@@ -1,6 +1,6 @@
 # PetPal 自定义域名绑定手册（解决 EdgeOne Pages 401）
 
-> 适用场景：你的 PetPal 已部署到 EdgeOne Pages，平台子域名 `https://petpal-dp7npliqjm90.edgeone.dev` 在国内手机访问报 **401 UNAUTHORIZED**。
+> 适用场景：你的 PetPal 已部署到 EdgeOne Pages，平台子域名 `https://petpal-lzjqqotr.edgeone.dev` 在国内手机访问报 **401 UNAUTHORIZED**（或 404/无法打开）。
 > 根因：加速区域选了「全球可用区（不含中国大陆）」，该区域的**平台子域名**对国内网络环境直接 401；解决办法是**绑定一个自己的自定义域名**，绑定后国内即可正常访问，且**无需 ICP 备案**。
 
 ---

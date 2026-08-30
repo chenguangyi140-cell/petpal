@@ -39,7 +39,7 @@
 本地当前有若干未推送的提交（含 `edgeone.json` 与文档）。先推送，EdgeOne 才能拉到最新代码：
 
 ```bash
-cd /d/2026项目/workbuudy/2026-08-28-22-36-31/petpal
+cd C:\petpal
 git push -u origin master
 ```
 
@@ -74,12 +74,12 @@ git push -u origin master
 
 点击「**开始部署**」。几十秒到几分钟后完成，会得到：
 
-- **生产域名**：形如 `petpal-xxxx.edgeone.app`（长期有效，手机直接访问）。
+- **生产域名**：形如 `petpal-xxxx.edgeone.dev`（长期有效，手机直接访问）。
 - 之后每次 `git push master` 都会**自动重新部署**。
 
 ### 步骤 6 · 手机验证 & 添加到主屏幕
 
-1. 手机浏览器打开生产域名（`https://petpal-xxxx.edgeone.app`）。
+1. 手机浏览器打开生产域名（`https://petpal-xxxx.edgeone.dev`）。
 2. 确认能正常加载、宠物形象出现、各面板可交互。
 3. 浏览器菜单 → 「**添加到主屏幕**」，即可像 App 一样从桌面启动（PWA）。
    - 若「添加到主屏幕」不可用：`edgeone.json` 已为 `manifest.webmanifest` 强制 `Content-Type: application/manifest+json`，通常即可。仍不行则检查 `public/manifest.webmanifest` 内容是否完整。
@@ -145,4 +145,4 @@ git push origin master      # 自动触发 EdgeOne 重新构建部署
 2. 按提示在域名 DNS 添加 CNAME 记录指向 EdgeOne。
 3. 若加速区域选「含中国大陆」，绑定后需完成 **ICP 备案**；选「不含中国大陆」则无需备案，国内照常访问。
 
-个人体验阶段建议先用默认的 `*.edgeone.app` 域名，无需自定义域名、无需备案。
+个人体验阶段建议先用默认的 `*.edgeone.dev` 域名，无需自定义域名、无需备案。
