@@ -171,10 +171,9 @@ export function AIImageStudio({ mode, onClose }: StudioProps) {
           {step === 'source' && (
             <button
               onClick={() => setStep('method')}
-              disabled={!photo}
-              className="clay-press flex flex-1 items-center justify-center gap-1 rounded-[var(--radius-clay)] bg-candy py-3 font-heading font-bold text-white shadow-[var(--shadow-clay)] disabled:opacity-50"
+              className="clay-press flex flex-1 items-center justify-center gap-1 rounded-[var(--radius-clay)] bg-candy py-3 font-heading font-bold text-white shadow-[var(--shadow-clay)]"
             >
-              下一步 <ArrowRight size={18} />
+              {photo ? '下一步' : '跳过，下一步'} <ArrowRight size={18} />
             </button>
           )}
           {step === 'preview' && (
@@ -213,9 +212,9 @@ function SourceStep({
   const fileRef = useRef<HTMLInputElement>(null)
   return (
     <div className="flex flex-col">
-      <h3 className="font-heading text-xl text-primary">上传一张照片</h3>
+      <h3 className="font-heading text-xl text-primary">选择形象</h3>
       <p className="mt-1 text-sm text-ink-muted">
-        一张清晰的全身照最佳。AI 会自动生成前/侧/后三视图或直接生成立体模型。
+        可上传一张参考照片（仅预览，非必需），然后上传已有的前/侧/后三视图或 GLB 模型即可。
       </p>
 
       {showName && (
@@ -251,14 +250,14 @@ function SourceStep({
         ) : (
           <>
             <ImagePlus size={36} className="text-pink-400" />
-            <span className="text-sm font-bold text-ink-muted">点击上传照片</span>
+            <span className="text-sm font-bold text-ink-muted">点击上传参考照片（可选）</span>
           </>
         )}
       </button>
       <input
         ref={fileRef}
         type="file"
-        accept="image/*"
+        accept="image/png,image/jpeg,image/webp"
         hidden
         onChange={(e) => e.target.files?.[0] && void onPickPhoto(e.target.files[0])}
       />
@@ -546,7 +545,7 @@ function MiniUpload({
       <input
         ref={ref}
         type="file"
-        accept="image/*"
+        accept="image/png,image/jpeg,image/webp"
         hidden
         onChange={(e) => {
           const f = e.target.files?.[0]
