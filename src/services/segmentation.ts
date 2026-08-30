@@ -285,15 +285,19 @@ export async function cropToRegion(
   return canvas.toDataURL('image/png')
 }
 
-/** 压缩图片：控制 dataURL 体积，避免 IndexedDB 膨胀 */
+/**
+ * 压缩图片：控制 dataURL 体积，避免 IndexedDB 膨胀
+ * @param mime 输出格式。三视图需保留透明背景时传 'image/png'；否则用 'image/jpeg' 体积更小
+ */
 export async function compressImage(
   source: string,
   maxSize = 1024,
   quality = 0.9,
+  mime: 'image/jpeg' | 'image/png' = 'image/jpeg',
 ): Promise<string> {
   const img = await loadImage(source)
   const scale = Math.min(1, maxSize / Math.max(img.width, img.height))
-  if (scale === 1 && source.startsWith('data:image/jpeg')) return source
+  if (scale === 1 && mime === 'image/jpeg' && source.startsWith('data:image/jpeg')) return source
 
   const canvas = document.createElement('canvas')
   canvas.width = Math.max(1, Math.round(img.width * scale))
@@ -302,7 +306,7 @@ export async function compressImage(
   if (!ctx) throw new Error('无法创建画布上下文')
   ctx.imageSmoothingQuality = 'high'
   ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
-  return canvas.toDataURL('image/jpeg', quality)
+  return canvas.toDataURL(mime, quality)
 }
 
 function loadImage(src: string): Promise<HTMLImageElement> {

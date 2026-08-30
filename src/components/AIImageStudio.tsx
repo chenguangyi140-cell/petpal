@@ -12,7 +12,7 @@ import {
 } from 'lucide-react'
 import type { SkinId, ThreeViewSet } from '@/types'
 import { usePetStore } from '@/store/petStore'
-import { compressImage } from '@/services/segmentation'
+import { compressImage, removeBackground } from '@/services/segmentation'
 import { getHunyuan3DInfo } from '@/services/cloudService'
 import { ThreeViewRenderer } from '@/engine/threeViewRenderer'
 import { ModelViewer } from '@/three/modelViewer'
@@ -21,6 +21,9 @@ import { SKIN_IDS, getSkin } from '@/skins/registry'
 type StudioMode = 'create' | 'edit'
 type Step = 'source' | 'method' | 'preview'
 type Method = 'cloud' | 'manual'
+
+/** 高质量在线抠图站（无公开 API，作为本地自动抠图的增强入口） */
+const KOUKOUTU_URL = 'https://www.koukoutu.com/removebgtool/all'
 
 interface StudioProps {
   mode: StudioMode
@@ -334,6 +337,17 @@ function MethodStep({
 
         {method === 'manual' && (
           <div className="mt-3 space-y-3">
+            <a
+              href={KOUKOUTU_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center justify-center gap-1.5 rounded-[10px] border border-dashed border-sky-300 bg-sky-50 py-2 text-xs font-bold text-sky-700 hover:bg-sky-100"
+            >
+              <Sparkles size={14} /> 本地抠图不干净？去 koukoutu 高清抠图 ↗
+            </a>
+            <p className="text-center text-[10px] text-ink-muted">
+              在站内处理后可下载透明 PNG，再上传到上方三视图即可
+            </p>
             <div className="grid grid-cols-3 gap-2">
               <MiniUpload label="正面" value={manFront} onChange={setManFront} />
               <MiniUpload label="侧面" value={manSide} onChange={setManSide} />
@@ -491,12 +505,22 @@ function MiniUpload({
     setBusy(true)
     try {
       const raw = await fileToDataUrl(file)
-      // 自动缩放：限制长边 1024、JPEG 0.85，避免大图导致上传/IndexedDB 失败
-      const compressed = await compressImage(raw, 1024, 0.85)
+      // 先自动扣图，保证三视图背景干净（非纯色背景也能得到透明前景）
+      const cut = await removeBackground(raw)
+      const cutDataUrl = cut.dataUrl
+      // 缩放并保留透明通道（PNG），控制体积的同时不丢失去背结果
+      const compressed = await compressImage(cutDataUrl, 1024, 0.92, 'image/png')
       onChange(compressed)
     } catch (err) {
-      console.error('图片处理失败:', err)
-      onChange(null)
+      console.error('自动扣图失败，回退为仅压缩原图:', err)
+      // 兜底：扣图异常时不丢图，直接压缩原图
+      try {
+        const raw = await fileToDataUrl(file)
+        onChange(await compressImage(raw, 1024, 0.85))
+      } catch (e2) {
+        console.error('图片处理失败:', e2)
+        onChange(null)
+      }
     } finally {
       setBusy(false)
       if (ref.current) ref.current.value = ''
